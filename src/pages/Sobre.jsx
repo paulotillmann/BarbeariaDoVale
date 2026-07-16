@@ -31,10 +31,10 @@ export default function Sobre() {
               <Logo showText={false} className="h-20 w-auto" />
             </div>
             <h1 className="font-display text-3xl md:text-5xl font-bold mb-6">
-              Sobre a <span className="gold-text">Brooklyn</span>
+              Sobre a <span className="gold-text">Do Vale</span>
             </h1>
             <p className="text-muted-foreground text-base md:text-lg leading-relaxed max-w-xl mx-auto">
-              Nascida da paixão pela clássica cultura de barbearias e o desejo de oferecer uma experiência premium de cuidado masculino em Natal-RN.
+              Nascida da paixão pela clássica cultura de barbearias e o desejo de oferecer uma experiência premium de cuidado masculino em Araguari-MG.
             </p>
           </div>
 
@@ -64,17 +64,17 @@ export default function Sobre() {
           {/* Text block */}
           <div className="border border-border/50 bg-card/40 rounded-3xl p-8 md:p-10 leading-relaxed text-muted-foreground space-y-6">
             <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2 border-b border-border/30 pb-3 mb-2">
-              <Users className="w-5 h-5 text-primary" /> A Maior Rede de Natal
+              <Users className="w-5 h-5 text-primary" /> Referência em Araguari
             </h3>
             <p>
-              Com 3 unidades estrategicamente localizadas em Natal, a Barbearia Brooklyn consolidou-se como referência em atendimento ao cliente e infraestrutura premium. Nossos ambientes são projetados para oferecer o máximo conforto, desde uma recepção acolhedora até cadeiras de alta qualidade e atendimento impecável.
+              Localizada no coração de Araguari-MG, a Barbearia Do Vale consolidou-se como referência em atendimento ao cliente e infraestrutura premium. Nosso ambiente é projetado para oferecer o máximo conforto, desde uma recepção acolhedora até cadeiras de alta qualidade e atendimento impecável.
             </p>
             <p>
               Venha tomar um café, refrigerante ou cerveja gelada conosco enquanto nossos barbeiros especialistas cuidam do seu visual.
             </p>
             <div className="pt-4 flex items-center gap-2 text-sm font-semibold text-primary">
               <Heart className="w-4 h-4 text-primary fill-primary animate-pulse" />
-              <span>Feito com paixão pela Barbearia Brooklyn</span>
+              <span>Feito com paixão pela Barbearia Do Vale</span>
             </div>
           </div>
         </div>

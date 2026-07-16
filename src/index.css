@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rye&display=swap');
 
 @import "tailwindcss";
 
@@ -6,7 +7,7 @@
   --font-display: 'Inter', sans-serif;
   --font-sans: 'Inter', sans-serif;
   
-  /* Paleta baseada na logo Brooklyn - Premium */
+  /* Paleta baseada na logo Do Vale - Premium */
   --color-background: #050505; /* Preto absoluto */
   --color-foreground: #fafafa; /* Branco quente */
   
@@ -37,6 +38,12 @@
 }
 
 /* Custom Utilities - Premium */
+.font-rye {
+  font-family: "Rye", serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
 .bg-gold-gradient {
   background: linear-gradient(135deg, #f0d060 0%, #d4af37 40%, #b8941f 100%);
 }

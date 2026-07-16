@@ -1,0 +1,17 @@
+name = "barbeariadovale"
+main = "src/index.js"
+compatibility_date = "2024-04-03"
+
+[durable_objects]
+bindings = [
+  { name = "APPOINTMENT_SCHEDULER", class_name = "AppointmentScheduler" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AppointmentScheduler"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "barbearia-d1"
+database_id = "0b548ecb-8b1b-4bc4-8ed1-0128845baa73"
