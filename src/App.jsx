@@ -6,6 +6,7 @@ import TrabalheConosco from "./pages/TrabalheConosco.jsx"
 import Login from "./pages/Login.jsx"
 import Dashboard from "./pages/Dashboard.jsx"
 import Agendar from "./pages/Agendar.jsx"
+import ResetPassword from "./pages/ResetPassword.jsx"
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/agendar" element={<Agendar />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Routes>
       </div>
     </div>

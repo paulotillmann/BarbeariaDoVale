@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../context/AuthContext.jsx"
-import { LogIn, UserPlus, Phone, Lock, User, AlertCircle, ArrowLeft, Mail } from "lucide-react"
+import { LogIn, UserPlus, Phone, Lock, User, AlertCircle, ArrowLeft, Mail, Eye, EyeOff } from "lucide-react"
 
 export default function Login() {
   const { user, login, register } = useAuth()
@@ -20,6 +20,18 @@ export default function Login() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+
+  const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
+
+  // Carregar e-mail/telefone salvo se ativado "Lembrar-me" anteriormente
+  useEffect(() => {
+    const savedKey = localStorage.getItem("rememberedLoginKey")
+    if (savedKey) {
+      setLoginKey(savedKey)
+      setRememberMe(true)
+    }
+  }, [])
 
   useEffect(() => {
     // Se o usuário já estiver logado, redireciona para o dashboard
@@ -57,6 +69,11 @@ export default function Login() {
         }
 
         await login(loginKey.trim(), password)
+        if (rememberMe) {
+          localStorage.setItem("rememberedLoginKey", loginKey.trim())
+        } else {
+          localStorage.removeItem("rememberedLoginKey")
+        }
       }
       navigate("/dashboard")
     } catch (err) {
@@ -191,15 +208,44 @@ export default function Login() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-background/50 border border-border focus:border-primary rounded-xl py-3.5 pl-12 pr-4 text-foreground placeholder-muted-foreground focus:outline-none transition-all duration-300"
+                  className="w-full bg-background/50 border border-border focus:border-primary rounded-xl py-3.5 pl-12 pr-12 text-foreground placeholder-muted-foreground focus:outline-none transition-all duration-300"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus:outline-none cursor-pointer"
+                  title={showPassword ? "Ocultar senha" : "Exibir senha"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
+
+            {!isRegister && (
+              <div className="flex items-center justify-between mt-2 select-none">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="accent-primary w-4 h-4 rounded border-border bg-background focus:ring-primary focus:ring-opacity-25"
+                  />
+                  <span>Lembrar de mim</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => navigate("/reset-password")}
+                  className="text-xs text-primary hover:text-accent font-semibold transition-colors cursor-pointer"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+            )}
 
             <button
               type="submit"

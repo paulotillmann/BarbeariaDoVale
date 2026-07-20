@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { DurableObject } from "cloudflare:workers";
 
 const app = new Hono();
 
@@ -197,6 +198,36 @@ app.post('/api/auth/login', async (c) => {
   }
 });
 
+// 2.5 Atualização / Recuperação de Senha (Reset Password)
+app.post('/api/auth/reset-password', async (c) => {
+  const { loginKey, newPassword } = await c.req.json();
+  if (!loginKey || !newPassword) {
+    return c.json({ error: 'Campos loginKey (telefone ou email) e newPassword são obrigatórios.' }, 400);
+  }
+
+  const keyClean = loginKey.trim();
+  const keyPhoneDigits = keyClean.replace(/\D/g, "");
+  const newPasswordHash = await hashPassword(newPassword);
+
+  try {
+    const user = await c.env.DB.prepare(
+      "SELECT id FROM users WHERE email = ? OR (phone = ? AND phone IS NOT NULL)"
+    ).bind(keyClean.toLowerCase(), keyPhoneDigits).first();
+
+    if (!user) {
+      return c.json({ error: 'Usuário não encontrado com os dados informados.' }, 404);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE users SET password_hash = ? WHERE id = ?"
+    ).bind(newPasswordHash, user.id).run();
+
+    return c.json({ message: 'Senha atualizada com sucesso!' });
+  } catch (e) {
+    return c.json({ error: 'Erro interno ao resetar senha: ' + e.message }, 500);
+  }
+});
+
 // 3. Obter Usuário Atual
 app.get('/api/auth/me', authMiddleware, async (c) => {
   const user = c.get('user');
@@ -216,7 +247,18 @@ app.get('/api/services', async (c) => {
 // 5. Listar Barbeiros
 app.get('/api/barbers', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare("SELECT id, name, phone FROM users WHERE role = 'barber'").all();
+    // Se a tabela barbers estiver vazia, copiar barbeiros existentes do users
+    const countResult = await c.env.DB.prepare("SELECT COUNT(*) as count FROM barbers").first();
+    if (countResult && countResult.count === 0) {
+      await c.env.DB.prepare(`
+        INSERT INTO barbers (id, name, phone, photo, birth_date, specialty, hired_at)
+        SELECT id, name, phone, NULL, NULL, 'Especialista Do Vale', '2022-01-01' 
+        FROM users 
+        WHERE role = 'barber'
+      `).run();
+    }
+
+    const { results } = await c.env.DB.prepare("SELECT id, name, phone, photo, birth_date, specialty, hired_at FROM barbers").all();
     return c.json(results);
   } catch (e) {
     return c.json({ error: e.message }, 500);
@@ -230,11 +272,12 @@ app.get('/api/appointments', authMiddleware, async (c) => {
     let query = `
       SELECT a.id, a.appointment_time, a.status, 
              c.name as client_name, c.phone as client_phone,
-             b.name as barber_name,
+             COALESCE(b.name, u.name) as barber_name,
              s.name as service_name, s.price as service_price, s.duration_minutes
       FROM appointments a
       JOIN users c ON a.client_id = c.id
-      JOIN users b ON a.barber_id = b.id
+      LEFT JOIN barbers b ON a.barber_id = b.id
+      LEFT JOIN users u ON a.barber_id = u.id
       JOIN services s ON a.service_id = s.id
     `;
     
@@ -554,11 +597,225 @@ app.put('/api/users/:id/role', authMiddleware, async (c) => {
   }
 });
 
+// --- Endpoints de Clientes (Customers Table) ---
+
+// 11. Listar Clientes (com pesquisa/filtro opcional)
+app.get('/api/customers', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado. Apenas administradores e barbeiros podem gerenciar clientes.' }, 403);
+  }
+
+  const queryParam = c.req.query('q');
+  try {
+    let results;
+    if (queryParam) {
+      const search = `%${queryParam}%`;
+      results = (await c.env.DB.prepare(
+        "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers WHERE name LIKE ? OR phone LIKE ? ORDER BY name ASC"
+      ).bind(search, search).all()).results;
+    } else {
+      results = (await c.env.DB.prepare(
+        "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers ORDER BY name ASC"
+      ).all()).results;
+    }
+    return c.json(results);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 12. Obter Cliente por ID
+app.get('/api/customers/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const customer = await c.env.DB.prepare(
+      "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers WHERE id = ?"
+    ).bind(id).first();
+    if (!customer) {
+      return c.json({ error: 'Cliente não encontrado.' }, 404);
+    }
+    return c.json(customer);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 13. Criar Cliente
+app.post('/api/customers', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const { name, address, phone, birth_date, photo } = await c.req.json();
+  if (!name || !phone) {
+    return c.json({ error: 'Os campos nome e celular são obrigatórios.' }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO customers (id, name, address, phone, birth_date, photo) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(id, name, address, phone, birth_date, photo).run();
+
+    return c.json({ success: true, customer: { id, name, address, phone, birth_date, photo } });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 14. Editar/Atualizar Cliente
+app.put('/api/customers/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  const { name, address, phone, birth_date, photo } = await c.req.json();
+  if (!name || !phone) {
+    return c.json({ error: 'Os campos nome e celular são obrigatórios.' }, 400);
+  }
+
+  try {
+    const existing = await c.env.DB.prepare("SELECT id FROM customers WHERE id = ?").bind(id).first();
+    if (!existing) {
+      return c.json({ error: 'Cliente não encontrado.' }, 404);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE customers SET name = ?, address = ?, phone = ?, birth_date = ?, photo = ? WHERE id = ?"
+    ).bind(name, address, phone, birth_date, photo, id).run();
+
+    return c.json({ success: true, customer: { id, name, address, phone, birth_date, photo } });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 15. Excluir Cliente
+app.delete('/api/customers/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const existing = await c.env.DB.prepare("SELECT id FROM customers WHERE id = ?").bind(id).first();
+    if (!existing) {
+      return c.json({ error: 'Cliente não encontrado.' }, 404);
+    }
+
+    await c.env.DB.prepare("DELETE FROM customers WHERE id = ?").bind(id).run();
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 16. Obter um profissional específico
+app.get('/api/barbers/:id', authMiddleware, async (c) => {
+  const id = c.req.param('id');
+  try {
+    const barber = await c.env.DB.prepare(
+      "SELECT id, name, phone, photo, birth_date, specialty, hired_at FROM barbers WHERE id = ?"
+    ).bind(id).first();
+    if (!barber) {
+      return c.json({ error: 'Profissional não encontrado.' }, 404);
+    }
+    return c.json(barber);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 17. Criar profissional
+app.post('/api/barbers', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  try {
+    const { name, phone, photo, birth_date, specialty, hired_at } = await c.req.json();
+    if (!name || !phone) {
+      return c.json({ error: 'Os campos nome e telefone/whatsapp são obrigatórios.' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await c.env.DB.prepare(
+      "INSERT INTO barbers (id, name, phone, photo, birth_date, specialty, hired_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, name, phone, photo || null, birth_date || null, specialty || null, hired_at || null).run();
+
+    return c.json({ success: true, barber: { id, name, phone, photo, birth_date, specialty, hired_at } });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 18. Atualizar profissional
+app.put('/api/barbers/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const { name, phone, photo, birth_date, specialty, hired_at } = await c.req.json();
+    if (!name || !phone) {
+      return c.json({ error: 'Os campos nome e telefone/whatsapp são obrigatórios.' }, 400);
+    }
+
+    const existing = await c.env.DB.prepare("SELECT id FROM barbers WHERE id = ?").bind(id).first();
+    if (!existing) {
+      return c.json({ error: 'Profissional não encontrado.' }, 404);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE barbers SET name = ?, phone = ?, photo = ?, birth_date = ?, specialty = ?, hired_at = ? WHERE id = ?"
+    ).bind(name, phone, photo, birth_date, specialty, hired_at, id).run();
+
+    return c.json({ success: true, barber: { id, name, phone, photo, birth_date, specialty, hired_at } });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 19. Excluir profissional
+app.delete('/api/barbers/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const existing = await c.env.DB.prepare("SELECT id FROM barbers WHERE id = ?").bind(id).first();
+    if (!existing) {
+      return c.json({ error: 'Profissional não encontrado.' }, 404);
+    }
+
+    await c.env.DB.prepare("DELETE FROM barbers WHERE id = ?").bind(id).run();
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 export default app;
 
 // --- CLASSE DO DURABLE OBJECT PARA AGENDAMENTOS (DURABLE ALARMS) ---
-export class AppointmentScheduler {
+export class AppointmentScheduler extends DurableObject {
   constructor(state, env) {
+    super(state, env);
     this.state = state;
     this.env = env;
   }

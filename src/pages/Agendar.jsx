@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
 import { Calendar as CalendarIcon, Clock, User, Scissors, Star, ArrowLeft, CheckCircle2, AlertTriangle, CalendarDays, MessageCircle, Phone } from "lucide-react"
 
 export default function Agendar() {
   const { user, token } = useAuth()
-  const navigate = useNavigate()
 
   const [services, setServices] = useState([])
   const [barbers, setBarbers] = useState([])
