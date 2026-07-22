@@ -3,6 +3,7 @@ import { BrowserRouter } from "react-router-dom"
 import "./index.css"
 import App from "./App.jsx"
 import { AuthProvider } from "./context/AuthContext.jsx"
+import "react-grab"
 
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
@@ -11,3 +12,4 @@ createRoot(document.getElementById("root")).render(
     </AuthProvider>
   </BrowserRouter>,
 )
+

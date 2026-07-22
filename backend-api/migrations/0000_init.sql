@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE TABLE IF NOT EXISTS appointments (
   id TEXT PRIMARY KEY,
   client_id TEXT NOT NULL REFERENCES users(id),
-  barber_id TEXT NOT NULL REFERENCES users(id),
+  barber_id TEXT NOT NULL REFERENCES barbers(id),
   service_id TEXT NOT NULL REFERENCES services(id),
   appointment_time TEXT NOT NULL, -- Formato: YYYY-MM-DD HH:MM
   status TEXT NOT NULL CHECK(status IN ('pending', 'confirmed', 'completed', 'cancelled')) DEFAULT 'confirmed',
