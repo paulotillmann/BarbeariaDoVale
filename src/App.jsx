@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom"
 import Navbar from "./components/Navbar.jsx"
+import BackgroundGlow from "./components/BackgroundGlow.jsx"
 import Home from "./pages/Home.jsx"
 import Sobre from "./pages/Sobre.jsx"
 import TrabalheConosco from "./pages/TrabalheConosco.jsx"
@@ -8,6 +9,7 @@ import Dashboard from "./pages/Dashboard.jsx"
 import Agenda from "./pages/Agenda.jsx"
 import Clientes from "./pages/Clientes.jsx"
 import Servicos from "./pages/Servicos.jsx"
+import Produtos from "./pages/Produtos.jsx"
 import Profissionais from "./pages/Profissionais.jsx"
 import Configuracoes from "./pages/Configuracoes.jsx"
 import Agendar from "./pages/Agendar.jsx"
@@ -15,9 +17,10 @@ import ResetPassword from "./pages/ResetPassword.jsx"
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
+    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans relative overflow-x-hidden">
+      <BackgroundGlow />
       <Navbar />
-      <div className="flex-1">
+      <div className="flex-1 relative z-10">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/sobre" element={<Sobre />} />
@@ -27,6 +30,7 @@ export default function App() {
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/servicos" element={<Servicos />} />
+          <Route path="/produtos" element={<Produtos />} />
           <Route path="/profissionais" element={<Profissionais />} />
           <Route path="/configuracoes" element={<Configuracoes />} />
           <Route path="/agendar" element={<Agendar />} />

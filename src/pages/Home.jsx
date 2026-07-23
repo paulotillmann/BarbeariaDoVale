@@ -114,7 +114,7 @@ export default function Home() {
   }
 
   return (
-    <div className="bg-background min-h-screen text-foreground overflow-x-hidden pt-16">
+    <div className="bg-transparent min-h-screen text-foreground overflow-x-hidden pt-16">
       
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20 bg-hero-gradient">

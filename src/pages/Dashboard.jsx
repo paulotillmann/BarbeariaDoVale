@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
-import { CalendarDays, Scissors, Clock, User, Sparkles } from "lucide-react"
+import { CalendarDays, Scissors, Package, Clock, User, Sparkles } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
 export default function Dashboard() {
@@ -77,7 +77,7 @@ export default function Dashboard() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-background text-foreground pt-24 pb-28 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -87,41 +87,53 @@ export default function Dashboard() {
       {/* Sidebar de Navegação */}
       <Sidebar />
 
-      <div className="container mx-auto px-1 max-w-5xl relative z-10 animate-scale-in lg:fixed lg:left-[280px] sidebar-fixed-content lg:right-10 lg:top-1/2 lg:-translate-y-1/2 lg:h-[calc(80vh+80px)] lg:w-auto lg:max-w-none lg:overflow-y-auto lg:pr-4">
-        <div className="space-y-8 animate-scale-in">
+      <div className="container mx-auto max-w-5xl relative z-10 animate-fade-in">
+        <div className="space-y-8">
           {/* Estatísticas / Grid de Resumo */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-card/40 border border-border rounded-2xl p-6 shadow-sm flex items-center gap-4 relative overflow-hidden group">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link to="/agenda" className="bg-card/40 border border-border rounded-2xl p-5 shadow-sm flex items-center gap-4 relative overflow-hidden group hover:border-primary/40 transition-all cursor-pointer">
               <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-primary shrink-0">
                 <CalendarDays size={20} />
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Agendamentos Ativos</span>
-                <span className="text-2xl font-black text-foreground mt-1 block font-display">
-                  {appointments.filter(a => a.status === 'confirmed').length}
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Agendamentos</span>
+                <span className="text-xl font-black text-foreground mt-0.5 block font-display">
+                  {appointments.filter(a => a.status === 'confirmed').length} Ativos
                 </span>
               </div>
-            </div>
+            </Link>
 
-            <div className="bg-card/40 border border-border rounded-2xl p-6 shadow-sm flex items-center gap-4 relative overflow-hidden group">
+            <Link to="/servicos" className="bg-card/40 border border-border rounded-2xl p-5 shadow-sm flex items-center gap-4 relative overflow-hidden group hover:border-primary/40 transition-all cursor-pointer">
               <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-primary shrink-0">
                 <Scissors size={20} />
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Serviços Disponíveis</span>
-                <span className="text-2xl font-black text-foreground mt-1 block font-display">
-                  {services.length > 0 ? services.length : 3}
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Serviços</span>
+                <span className="text-xl font-black text-foreground mt-0.5 block font-display">
+                  {services.length > 0 ? services.length : 3} Opções
                 </span>
               </div>
-            </div>
+            </Link>
 
-            <div className="bg-card/40 border border-border rounded-2xl p-6 shadow-sm flex items-center gap-4 relative overflow-hidden group">
+            <Link to="/produtos" className="bg-card/40 border border-border rounded-2xl p-5 shadow-sm flex items-center gap-4 relative overflow-hidden group hover:border-primary/40 transition-all cursor-pointer">
+              <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-primary shrink-0">
+                <Package size={20} />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Estoque & Produtos</span>
+                <span className="text-xs font-black text-primary uppercase tracking-wider mt-1 block font-display">
+                  Gerenciar ➔
+                </span>
+              </div>
+            </Link>
+
+            <div className="bg-card/40 border border-border rounded-2xl p-5 shadow-sm flex items-center gap-4 relative overflow-hidden group">
               <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-primary shrink-0">
                 <Sparkles size={20} />
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Categoria do Perfil</span>
-                <span className="text-sm font-black text-primary uppercase tracking-wider mt-1 block font-display">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Categoria</span>
+                <span className="text-xs font-black text-primary uppercase tracking-wider mt-1 block font-display">
                   {user.role === 'admin' ? 'Administrador' : user.role === 'barber' ? 'Barbeiro' : 'Cliente Gold'}
                 </span>
               </div>

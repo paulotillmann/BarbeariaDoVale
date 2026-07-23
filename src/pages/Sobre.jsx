@@ -6,7 +6,7 @@ import Card from "../components/Card.jsx"
 
 export default function Sobre() {
   return (
-    <div className="bg-background min-h-screen text-foreground pt-24 pb-16 relative overflow-hidden">
+    <div className="bg-transparent min-h-screen text-foreground pt-24 pb-16 relative overflow-hidden">
       {/* Background Lights */}
       <div className="absolute top-1/4 -left-20 w-72 h-72 bg-primary/10 rounded-full blur-3xl"></div>
       <div className="absolute bottom-1/4 -right-20 w-72 h-72 bg-accent/10 rounded-full blur-3xl"></div>

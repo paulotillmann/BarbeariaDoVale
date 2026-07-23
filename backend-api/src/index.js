@@ -268,7 +268,7 @@ app.post('/api/services', authMiddleware, async (c) => {
 
   try {
     const { name, description, duration_minutes, price, barber_ids } = await c.req.json();
-    if (!name || !duration_minutes || price === undefined) {
+    if (!name || duration_minutes === undefined || duration_minutes === null || price === undefined) {
       return c.json({ error: 'Campos nome, duração e preço são obrigatórios.' }, 400);
     }
 
@@ -304,7 +304,7 @@ app.put('/api/services/:id', authMiddleware, async (c) => {
   const serviceId = c.req.param('id');
   try {
     const { name, description, duration_minutes, price, barber_ids } = await c.req.json();
-    if (!name || !duration_minutes || price === undefined) {
+    if (!name || duration_minutes === undefined || duration_minutes === null || price === undefined) {
       return c.json({ error: 'Campos nome, duração e preço são obrigatórios.' }, 400);
     }
 
@@ -485,19 +485,40 @@ app.post('/api/appointments', authMiddleware, async (c) => {
       ).bind(clientId, name ? name.trim() : 'Cliente Sem Nome', phone || null).run();
     }
 
-    // Verificar conflito de horário para o mesmo barbeiro
-    const conflict = await c.env.DB.prepare(
-      "SELECT id FROM appointments WHERE barber_id = ? AND appointment_time = ? AND status = 'confirmed'"
-    ).bind(barber_id, appointment_time).first();
-
-    if (conflict) {
-      return c.json({ error: 'Este horário já está reservado com este barbeiro.' }, 400);
-    }
-
     // Processar serviços
     const serviceIds = Array.isArray(service_id) ? service_id : [service_id];
     if (serviceIds.length === 0) {
       return c.json({ error: 'Selecione ao menos um serviço.' }, 400);
+    }
+
+    // Calcular duração total dos serviços agendados
+    let totalRequestedDuration = 0;
+    for (const sId of serviceIds) {
+      const sRow = await c.env.DB.prepare("SELECT duration_minutes FROM services WHERE id = ?").bind(sId).first();
+      if (sRow) {
+        totalRequestedDuration += (sRow.duration_minutes !== undefined && sRow.duration_minutes !== null) ? sRow.duration_minutes : 30;
+      }
+    }
+
+    // Verificar conflito de horário para o mesmo barbeiro (somente se a duração for > 0)
+    if (totalRequestedDuration > 0) {
+      const conflict = await c.env.DB.prepare(`
+        SELECT a.id 
+        FROM appointments a
+        LEFT JOIN services s_single ON a.service_id = s_single.id
+        WHERE a.barber_id = ? 
+          AND a.appointment_time = ? 
+          AND a.status = 'confirmed'
+          AND COALESCE(
+            (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+            s_single.duration_minutes,
+            30
+          ) > 0
+      `).bind(barber_id, appointment_time).first();
+
+      if (conflict) {
+        return c.json({ error: 'Este horário já está reservado com este barbeiro.' }, 400);
+      }
     }
 
     const appointmentId = crypto.randomUUID();
@@ -600,19 +621,40 @@ app.post('/api/appointments/quick', async (c) => {
       ).bind(clientId, name.trim(), phone).run();
     }
 
-    // 2. Verificar conflito de horário
-    const conflict = await c.env.DB.prepare(
-      "SELECT id FROM appointments WHERE barber_id = ? AND appointment_time = ? AND status = 'confirmed' AND client_id != ?"
-    ).bind(barber_id, appointment_time, clientId).first();
-
-    if (conflict) {
-      return c.json({ error: 'Este horário já está reservado com este barbeiro.' }, 400);
-    }
-
     // 3. Processar múltiplos serviços
     const serviceIds = Array.isArray(service_id) ? service_id : [service_id];
     if (serviceIds.length === 0) {
       return c.json({ error: 'Selecione ao menos um serviço.' }, 400);
+    }
+
+    let totalRequestedDuration = 0;
+    for (const sId of serviceIds) {
+      const sRow = await c.env.DB.prepare("SELECT duration_minutes FROM services WHERE id = ?").bind(sId).first();
+      if (sRow) {
+        totalRequestedDuration += (sRow.duration_minutes !== undefined && sRow.duration_minutes !== null) ? sRow.duration_minutes : 30;
+      }
+    }
+
+    // 2. Verificar conflito de horário (somente se a duração for > 0)
+    if (totalRequestedDuration > 0) {
+      const conflict = await c.env.DB.prepare(`
+        SELECT a.id 
+        FROM appointments a
+        LEFT JOIN services s_single ON a.service_id = s_single.id
+        WHERE a.barber_id = ? 
+          AND a.appointment_time = ? 
+          AND a.status = 'confirmed' 
+          AND a.client_id != ?
+          AND COALESCE(
+            (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+            s_single.duration_minutes,
+            30
+          ) > 0
+      `).bind(barber_id, appointment_time, clientId).first();
+
+      if (conflict) {
+        return c.json({ error: 'Este horário já está reservado com este barbeiro.' }, 400);
+      }
     }
 
     const createdIds = [];
@@ -1135,7 +1177,213 @@ app.delete('/api/barbers/:id', authMiddleware, async (c) => {
   }
 });
 
+// --- Endpoints de Produtos (Products Table) ---
+
+// 20. Listar Produtos
+app.get('/api/products', authMiddleware, async (c) => {
+  try {
+    try {
+      await c.env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS products (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          supplier TEXT,
+          supplier_contact_name TEXT,
+          supplier_contact_phone TEXT,
+          cost_price REAL NOT NULL DEFAULT 0,
+          sale_price REAL NOT NULL DEFAULT 0,
+          stock_quantity INTEGER NOT NULL DEFAULT 0,
+          photo TEXT,
+          created_at TEXT DEFAULT (datetime('now', 'localtime')),
+          updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+      `).run();
+    } catch {}
+
+    try {
+      await c.env.DB.prepare("ALTER TABLE products ADD COLUMN photo TEXT;").run();
+    } catch {}
+
+    // Auto-seed se o banco estiver vazio
+    try {
+      const countRes = await c.env.DB.prepare("SELECT COUNT(*) as cnt FROM products").first();
+      if (!countRes || countRes.cnt === 0) {
+        await c.env.DB.batch([
+          c.env.DB.prepare("INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind('prod-pomada-mate', 'Pomada Modeladora Effect Mate 100g', 'Efeito fosco, alta fixação e fragrância amadeirada exclusiva Do Vale.', 'Barber Supply Brasil', 'Carlos Eduardo', '(34) 99888-7766', 22.50, 45.00, 12),
+          c.env.DB.prepare("INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind('prod-oleo-barba', 'Óleo Hidratante para Barba 30ml', 'Enriquecido com óleo de argan e jojoba para hidratação e brilho natural.', 'Cosméticos Vale Gold', 'Mariana Souza', '(34) 99777-5544', 18.00, 38.00, 8),
+          c.env.DB.prepare("INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind('prod-shampoo-barba', 'Shampoo 2 em 1 Cabelo e Barba 250ml', 'Limpeza profunda sem ressecar a pele e os fios com mentol refrescante.', 'Barber Supply Brasil', 'Carlos Eduardo', '(34) 99888-7766', 25.00, 52.00, 2)
+        ]);
+      }
+    } catch (errSeed) {
+      console.error("Erro ao realizar seed de produtos:", errSeed);
+    }
+
+    const queryParam = c.req.query('q');
+    let results;
+    if (queryParam) {
+      const search = `%${queryParam}%`;
+      results = (await c.env.DB.prepare(
+        "SELECT id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo, created_at, updated_at FROM products WHERE name LIKE ? OR supplier LIKE ? OR description LIKE ? ORDER BY name ASC"
+      ).bind(search, search, search).all()).results;
+    } else {
+      results = (await c.env.DB.prepare(
+        "SELECT id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo, created_at, updated_at FROM products ORDER BY name ASC"
+      ).all()).results;
+    }
+    return c.json(results);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 21. Criar Produto
+app.post('/api/products', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  try {
+    const { name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo } = await c.req.json();
+    if (!name || !name.trim()) {
+      return c.json({ error: 'O nome do produto é obrigatório.' }, 400);
+    }
+
+    const id = 'prod-' + crypto.randomUUID();
+    const cPrice = Number(cost_price) || 0;
+    const sPrice = Number(sale_price) || 0;
+    const stockQty = Math.max(0, parseInt(stock_quantity, 10) || 0);
+
+    await c.env.DB.prepare(
+      "INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      id,
+      name.trim(),
+      description ? description.trim() : null,
+      supplier ? supplier.trim() : null,
+      supplier_contact_name ? supplier_contact_name.trim() : null,
+      supplier_contact_phone ? supplier_contact_phone.trim() : null,
+      cPrice,
+      sPrice,
+      stockQty,
+      photo ? photo.trim() : null
+    ).run();
+
+    return c.json({
+      success: true,
+      product: {
+        id,
+        name: name.trim(),
+        description: description ? description.trim() : null,
+        supplier: supplier ? supplier.trim() : null,
+        supplier_contact_name: supplier_contact_name ? supplier_contact_name.trim() : null,
+        supplier_contact_phone: supplier_contact_phone ? supplier_contact_phone.trim() : null,
+        cost_price: cPrice,
+        sale_price: sPrice,
+        stock_quantity: stockQty,
+        photo: photo ? photo.trim() : null
+      }
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 22. Editar Produto
+app.put('/api/products/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const { name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo } = await c.req.json();
+    if (!name || !name.trim()) {
+      return c.json({ error: 'O nome do produto é obrigatório.' }, 400);
+    }
+
+    const cPrice = Number(cost_price) || 0;
+    const sPrice = Number(sale_price) || 0;
+    const stockQty = Math.max(0, parseInt(stock_quantity, 10) || 0);
+
+    const existing = await c.env.DB.prepare("SELECT id FROM products WHERE id = ?").bind(id).first();
+    if (existing) {
+      await c.env.DB.prepare(
+        "UPDATE products SET name = ?, description = ?, supplier = ?, supplier_contact_name = ?, supplier_contact_phone = ?, cost_price = ?, sale_price = ?, stock_quantity = ?, photo = ?, updated_at = datetime('now', 'localtime') WHERE id = ?"
+      ).bind(
+        name.trim(),
+        description ? description.trim() : null,
+        supplier ? supplier.trim() : null,
+        supplier_contact_name ? supplier_contact_name.trim() : null,
+        supplier_contact_phone ? supplier_contact_phone.trim() : null,
+        cPrice,
+        sPrice,
+        stockQty,
+        photo ? photo.trim() : null,
+        id
+      ).run();
+    } else {
+      await c.env.DB.prepare(
+        "INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).bind(
+        id,
+        name.trim(),
+        description ? description.trim() : null,
+        supplier ? supplier.trim() : null,
+        supplier_contact_name ? supplier_contact_name.trim() : null,
+        supplier_contact_phone ? supplier_contact_phone.trim() : null,
+        cPrice,
+        sPrice,
+        stockQty,
+        photo ? photo.trim() : null
+      ).run();
+    }
+
+    return c.json({
+      success: true,
+      product: {
+        id,
+        name: name.trim(),
+        description: description ? description.trim() : null,
+        supplier: supplier ? supplier.trim() : null,
+        supplier_contact_name: supplier_contact_name ? supplier_contact_name.trim() : null,
+        supplier_contact_phone: supplier_contact_phone ? supplier_contact_phone.trim() : null,
+        cost_price: cPrice,
+        sale_price: sPrice,
+        stock_quantity: stockQty,
+        photo: photo ? photo.trim() : null
+      }
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 23. Excluir Produto
+app.delete('/api/products/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const existing = await c.env.DB.prepare("SELECT id FROM products WHERE id = ?").bind(id).first();
+    if (!existing) {
+      return c.json({ error: 'Produto não encontrado.' }, 404);
+    }
+
+    await c.env.DB.prepare("DELETE FROM products WHERE id = ?").bind(id).run();
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 export default app;
+
 
 // --- CLASSE DO DURABLE OBJECT PARA AGENDAMENTOS (DURABLE ALARMS) ---
 export class AppointmentScheduler extends DurableObject {

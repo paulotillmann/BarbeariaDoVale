@@ -313,7 +313,7 @@ export default function Agendar() {
   }
 
   return (
-    <div className="min-h-screen bg-hero-gradient text-foreground pt-24 pb-12 px-4 md:px-8 flex flex-col items-center justify-center">
+    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-12 px-4 md:px-8 flex flex-col items-center justify-center">
       
       {/* Botão Voltar */}
       <Link

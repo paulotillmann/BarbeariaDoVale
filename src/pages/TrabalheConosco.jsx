@@ -28,7 +28,7 @@ export default function TrabalheConosco() {
   }
 
   return (
-    <div className="bg-background min-h-screen text-foreground pt-24 pb-16 flex items-center justify-center relative overflow-hidden">
+    <div className="bg-transparent min-h-screen text-foreground pt-24 pb-16 flex items-center justify-center relative overflow-hidden">
       {/* Background Gradients */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl"></div>
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>

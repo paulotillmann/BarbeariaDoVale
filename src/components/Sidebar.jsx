@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { LayoutDashboard, CalendarDays, Users, Scissors, User, Settings, LogOut } from "lucide-react"
+import { LayoutDashboard, CalendarDays, Users, Scissors, Package, User, Settings, LogOut, ChevronLeft, ChevronRight } from "lucide-react"
 import { useAuth } from "../context/AuthContext.jsx"
 
 export default function Sidebar() {
@@ -8,7 +8,7 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  // Inicia recolhido por padrão para hover fluído
+  // Inicia recolhido por padrão
   const [isCollapsed, setIsCollapsed] = useState(true)
 
   useEffect(() => {
@@ -26,6 +26,7 @@ export default function Sidebar() {
     { id: "agenda", label: "Agenda", path: "/agenda", icon: <CalendarDays size={20} /> },
     { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
     { id: "servicos", label: "Serviços", path: "/servicos", icon: <Scissors size={20} /> },
+    { id: "produtos", label: "Produtos", path: "/produtos", icon: <Package size={20} /> },
     { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> }
   ]
 
@@ -35,24 +36,18 @@ export default function Sidebar() {
 
   const currentPath = location.pathname
 
-  const handleOptionClick = () => {
-    setIsCollapsed(true)
-  }
-
   return (
     <>
-      {/* Sidebar Vertical para Telas Grandes (Desktop) com Hover e Collapse Suave */}
+      {/* Sidebar Vertical para Telas Grandes (Desktop) */}
       <aside 
-        onMouseEnter={() => setIsCollapsed(false)}
-        onMouseLeave={() => setIsCollapsed(true)}
         className={`hidden lg:flex fixed left-6 top-1/2 -translate-y-1/2 h-[calc(100vh-100px)] sidebar-smooth-transition duration-700 bg-gold-gradient rounded-[48px] shadow-gold-lg flex-col justify-between py-6 z-50 border border-gold-subtle ${
           isCollapsed ? "w-[88px] px-2.5" : "w-[210px] px-4"
         }`}
       >
         <div className="space-y-4">
-          {/* Cabeçalho do Sidebar com Logo Redimensionável */}
+          {/* Cabeçalho do Sidebar com Logo Redimensionável e Botão de Toggle na Borda */}
           <div className="flex flex-col items-center border-b border-black/10 pb-3 relative">
-            <Link to="/dashboard" onClick={handleOptionClick} className="transition-transform duration-700 hover:scale-105 mt-2">
+            <Link to="/dashboard" className="transition-transform duration-700 hover:scale-105 mt-2">
               <img
                 src="/assets/logo-nova-sem-borda.png"
                 alt="Barbearia Do Vale"
@@ -61,6 +56,19 @@ export default function Sidebar() {
                 }`}
               />
             </Link>
+
+            {/* Botão de expansão/recolhimento posicionado na borda direita sobre a linha divisória */}
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className={`absolute bottom-0 translate-y-1/2 ${
+                isCollapsed ? "-right-2.5" : "-right-4"
+              } translate-x-1/2 w-7 h-7 rounded-full bg-black text-[#d4af37] border border-[#d4af37]/40 hover:scale-115 active:scale-95 sidebar-smooth-transition duration-300 shadow-md flex items-center justify-center cursor-pointer z-30`}
+              title={isCollapsed ? "Expandir menu" : "Recolher menu"}
+              aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
+            >
+              {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
           </div>
 
           {/* Opções de Navegação com Animação Fluída de Texto e Ícone Centralizado */}
@@ -72,7 +80,6 @@ export default function Sidebar() {
                   key={opt.id}
                   to={opt.path}
                   title={opt.label}
-                  onClick={handleOptionClick}
                   className={`flex items-center sidebar-smooth-transition duration-700 overflow-hidden relative ${
                     isCollapsed 
                       ? "w-[54px] h-[54px] rounded-full justify-center items-center mx-auto p-0 gap-0" 
@@ -114,7 +121,6 @@ export default function Sidebar() {
             {user.role === 'admin' && (
               <Link
                 to="/configuracoes"
-                onClick={handleOptionClick}
                 className={`w-[128px] mx-auto py-2 flex items-center justify-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl sidebar-smooth-transition duration-700 border ${
                   currentPath === "/configuracoes"
                     ? "bg-black text-[#d4af37] border-black shadow-md"
@@ -127,7 +133,6 @@ export default function Sidebar() {
             <button
               type="button"
               onClick={() => {
-                handleOptionClick()
                 logout()
                 navigate("/login")
               }}
@@ -145,7 +150,6 @@ export default function Sidebar() {
               <Link
                 to="/configuracoes"
                 title="Configurações"
-                onClick={handleOptionClick}
                 className={`w-[54px] h-[54px] rounded-full flex items-center justify-center sidebar-smooth-transition duration-700 border ${
                   currentPath === "/configuracoes"
                     ? "bg-black text-[#d4af37] border-black shadow-md scale-105"
@@ -158,7 +162,6 @@ export default function Sidebar() {
             <button
               type="button"
               onClick={() => {
-                handleOptionClick()
                 logout()
                 navigate("/login")
               }}
@@ -194,3 +197,4 @@ export default function Sidebar() {
     </>
   )
 }
+

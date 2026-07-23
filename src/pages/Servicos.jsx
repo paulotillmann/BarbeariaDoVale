@@ -88,7 +88,7 @@ export default function Servicos() {
     setEditingServiceId(srv.id)
     setServiceName(srv.name || "")
     setServiceDescription(srv.description || "")
-    setServiceDurationMinutes(srv.duration_minutes || 30)
+    setServiceDurationMinutes(srv.duration_minutes ?? 30)
     
     const cents = Math.round((srv.price || 0) * 100)
     const formattedPrice = (cents / 100).toLocaleString("pt-BR", {
@@ -222,7 +222,7 @@ export default function Servicos() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-background text-foreground pt-24 pb-28 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -232,8 +232,8 @@ export default function Servicos() {
       {/* Sidebar de Navegação */}
       <Sidebar />
 
-      <div className="container mx-auto px-1 max-w-5xl relative z-10 animate-scale-in lg:fixed lg:left-[280px] sidebar-fixed-content lg:right-10 lg:top-1/2 lg:-translate-y-1/2 lg:h-[calc(80vh+80px)] lg:w-auto lg:max-w-none lg:overflow-y-auto lg:pr-4">
-        <div className="space-y-6 animate-scale-in">
+      <div className="container mx-auto max-w-5xl relative z-10 animate-fade-in">
+        <div className="space-y-6">
           {serviceSuccess && (
             <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 shadow-sm animate-fade-in">
               <CheckCircle2 size={18} className="shrink-0" />
@@ -292,7 +292,7 @@ export default function Servicos() {
                     </div>
                     <div>
                       <div className="flex items-center justify-between border-t border-border/40 pt-4">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Clock size={13} /> {srv.duration_minutes} min</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Clock size={13} /> {srv.duration_minutes === 0 ? "Livre" : `${srv.duration_minutes} min`}</span>
                         <span className="font-display font-black text-primary text-base">R$ {srv.price.toFixed(2).replace('.', ',')}</span>
                       </div>
                       {srv.barber_ids && srv.barber_ids.length > 0 && (
@@ -343,7 +343,7 @@ export default function Servicos() {
       {/* MODAL DE CONFIRMAÇÃO PERSONALIZADO */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="glass-card w-full max-w-sm border border-destructive/20 rounded-2xl p-6 md:p-8 shadow-elevated relative animate-scale-in text-center">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-sm border border-destructive/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in text-center">
             <div className="mx-auto w-12 h-12 bg-destructive/10 border border-destructive/25 text-destructive rounded-full flex items-center justify-center mb-4 animate-bounce">
               <AlertTriangle size={24} />
             </div>
@@ -379,7 +379,7 @@ export default function Servicos() {
       {/* MODAL DE CRIAÇÃO / EDIÇÃO DE SERVIÇOS */}
       {isServiceModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="glass-card w-full max-w-lg border border-gold-subtle rounded-2xl p-6 md:p-8 shadow-elevated relative animate-scale-in">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-lg border border-primary/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in">
             <h3 className="text-xl font-bold font-display mb-6 text-primary flex items-center gap-2">
               {editingServiceId ? <Pencil size={20} /> : <Plus size={20} />}
               {editingServiceId ? "Editar Serviço" : "Cadastrar Novo Serviço"}
@@ -420,18 +420,22 @@ export default function Servicos() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">Duração *</label>
                   <div className="flex gap-2">
-                    {[30, 60].map((dur) => (
+                    {[
+                      { value: 0, label: "Livre" },
+                      { value: 30, label: "30 min" },
+                      { value: 60, label: "60 min" }
+                    ].map((opt) => (
                       <button
                         type="button"
-                        key={dur}
-                        onClick={() => setServiceDurationMinutes(dur)}
+                        key={opt.value}
+                        onClick={() => setServiceDurationMinutes(opt.value)}
                         className={`flex-1 py-3 px-4 rounded-xl border text-sm transition-all font-bold cursor-pointer ${
-                          serviceDurationMinutes === dur
+                          serviceDurationMinutes === opt.value
                             ? "bg-primary text-background border-primary"
                             : "bg-background border-border text-muted-foreground hover:border-border/80"
                         }`}
                       >
-                        {dur} min
+                        {opt.label}
                       </button>
                     ))}
                   </div>

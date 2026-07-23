@@ -224,7 +224,7 @@ export default function Configuracoes() {
   if (!user || user.role !== "admin") return null
 
   return (
-    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-background text-foreground pt-24 pb-28 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-transparent text-foreground pt-24 pb-28 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -417,7 +417,7 @@ export default function Configuracoes() {
       {/* MODAL DE CONFIRMAÇÃO PERSONALIZADO DE EXCLUSÃO */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="glass-card w-full max-w-sm border border-destructive/20 rounded-2xl p-6 md:p-8 shadow-elevated relative animate-scale-in text-center">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-sm border border-destructive/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in text-center">
             <div className="mx-auto w-12 h-12 bg-destructive/10 border border-destructive/25 text-destructive rounded-full flex items-center justify-center mb-4 animate-bounce">
               <AlertTriangle size={24} />
             </div>
@@ -453,7 +453,7 @@ export default function Configuracoes() {
       {/* MODAL DE EDIÇÃO DE USUÁRIO */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="glass-card w-full max-w-md border border-gold-subtle rounded-2xl p-6 md:p-8 shadow-elevated relative animate-scale-in">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-md border border-primary/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in">
             <h3 className="text-xl font-bold font-display mb-6 text-primary flex items-center gap-2">
               <Pencil size={20} /> Editar Cadastro de Usuário
             </h3>

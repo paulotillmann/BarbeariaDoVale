@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
-import { Calendar as CalendarIcon, Clock, User, Plus, AlertTriangle, CheckCircle2, Check, Search, UserPlus, X, Trash2, Edit3 } from "lucide-react"
+import { Calendar as CalendarIcon, Clock, User, Plus, AlertTriangle, CheckCircle2, Check, Search, UserPlus, X, Trash2, Edit3, UserX, RotateCcw, Radio } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
 export default function Agenda() {
@@ -12,6 +12,7 @@ export default function Agenda() {
   const [services, setServices] = useState([])
   const [barbers, setBarbers] = useState([])
   const [customers, setCustomers] = useState([])
+  const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(true)
 
   // Calendário e Agenda states
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(new Date())
@@ -111,6 +112,26 @@ export default function Agenda() {
     fetchData()
   }, [user, token, navigate])
 
+  // Atualização em tempo real (Realtime polling) para a tabela de agendamentos
+  useEffect(() => {
+    if (!user || !token || !isRealtimeEnabled) return
+
+    const interval = setInterval(async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token}` }
+        const apptRes = await fetch(`${API_URL}/api/appointments`, { headers })
+        if (apptRes.ok) {
+          const apptData = await apptRes.json()
+          setAppointments(apptData)
+        }
+      } catch (err) {
+        console.error("Erro ao atualizar agendamentos em tempo real:", err)
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [user, token, isRealtimeEnabled])
+
   // Fechar dropdown de busca ao clicar fora
   useEffect(() => {
     function handleClickOutside(event) {
@@ -172,8 +193,12 @@ export default function Agenda() {
 
     const [slotH, slotM] = timeString.split(':').map(Number)
     if (isNaN(slotH) || isNaN(slotM)) return false
+    
+    // Se o serviço selecionado no formulário tem duração 0 min (Livre), ele NÃO ocupa horário
+    if (totalDurationMinutes === 0) return false
+
     const slotStartMinutes = slotH * 60 + slotM
-    const requestedDuration = totalDurationMinutes > 0 ? totalDurationMinutes : 30
+    const requestedDuration = totalDurationMinutes
     const slotEndMinutes = slotStartMinutes + requestedDuration
 
     return appointments.some(appt => {
@@ -199,7 +224,11 @@ export default function Agenda() {
       if (isNaN(apptH) || isNaN(apptM)) return false
 
       const apptStartMinutes = apptH * 60 + apptM
-      const apptDuration = appt.duration_minutes || 30
+      const apptDuration = appt.duration_minutes !== undefined && appt.duration_minutes !== null ? appt.duration_minutes : 30
+      
+      // Se o agendamento existente tem duração 0 min (Livre), ele NÃO ocupa nenhum horário
+      if (apptDuration === 0) return false
+
       const apptEndMinutes = apptStartMinutes + apptDuration
 
       // Verifica sobreposição entre intervalos [slotStart, slotEnd) e [apptStart, apptEnd)
@@ -297,11 +326,11 @@ export default function Agenda() {
 
   // Cálculo acumulado de duração e preço para múltiplos serviços
   const selectedServicesDetails = services.filter(s => selectedServices.includes(s.id))
-  const totalDurationMinutes = selectedServicesDetails.reduce((sum, s) => sum + (s.duration_minutes || 30), 0)
+  const totalDurationMinutes = selectedServicesDetails.reduce((sum, s) => sum + (s.duration_minutes ?? 30), 0)
   const totalPriceCalculated = selectedServicesDetails.reduce((sum, s) => sum + (s.price || 0), 0)
 
   let calculatedEndTime = ""
-  if (selectedTime && totalDurationMinutes > 0) {
+  if (selectedTime && (totalDurationMinutes >= 0 && selectedServicesDetails.length > 0)) {
     const [hours, minutes] = selectedTime.split(':').map(Number)
     if (!isNaN(hours) && !isNaN(minutes)) {
       const startDate = new Date()
@@ -343,42 +372,68 @@ export default function Agenda() {
     setIsNewAppointmentModalOpen(true)
   }
 
-  const handleCancelAppointment = () => {
+  const handleCancelAppointment = async () => {
     if (!editingAppointmentId) return
-    setConfirmModal({
-      isOpen: true,
-      title: "Cancelar Agendamento",
-      message: "Tem certeza que deseja cancelar esta agenda?",
-      onConfirm: async () => {
-        setConfirmModal(prev => ({ ...prev, isOpen: false }))
-        setSubmitLoading(true)
-        try {
-          const res = await fetch(`${API_URL}/api/appointments/${editingAppointmentId}/cancel`, {
-            method: "PUT",
-            headers: { Authorization: `Bearer ${token}` }
-          })
-          const data = await res.json()
-          if (!res.ok) throw new Error(data.error || "Erro ao cancelar agenda.")
+    setSubmitLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/api/appointments/${editingAppointmentId}/cancel`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao cancelar agenda.")
 
-          setSuccessMsg("Agendamento cancelado com sucesso!")
-          setTimeout(() => setSuccessMsg(""), 5000)
-          setIsNewAppointmentModalOpen(false)
-          setEditingAppointmentId(null)
+      setSuccessMsg("Agendamento cancelado com sucesso!")
+      setTimeout(() => setSuccessMsg(""), 5000)
+      setIsNewAppointmentModalOpen(false)
+      setEditingAppointmentId(null)
 
-          const appRes = await fetch(`${API_URL}/api/appointments`, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-          if (appRes.ok) {
-            const apptData = await appRes.json()
-            setAppointments(apptData)
-          }
-        } catch (err) {
-          setError(err.message)
-        } finally {
-          setSubmitLoading(false)
-        }
+      const appRes = await fetch(`${API_URL}/api/appointments`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (appRes.ok) {
+        const apptData = await appRes.json()
+        setAppointments(apptData)
       }
-    })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitLoading(false)
+    }
+  }
+
+  const handleUncancelAppointment = async () => {
+    if (!editingAppointmentId) return
+    setSubmitLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/api/appointments/${editingAppointmentId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: "confirmed" })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao reativar agenda.")
+
+      setSuccessMsg("Cancelamento desfeito com sucesso!")
+      setTimeout(() => setSuccessMsg(""), 5000)
+      setIsNewAppointmentModalOpen(false)
+      setEditingAppointmentId(null)
+
+      const appRes = await fetch(`${API_URL}/api/appointments`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (appRes.ok) {
+        const apptData = await appRes.json()
+        setAppointments(apptData)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitLoading(false)
+    }
   }
 
   const handleCreateAppointment = async (e) => {
@@ -470,16 +525,20 @@ export default function Agenda() {
     }
   }
 
-  const handleToggleAbsent = async (e, appt) => {
-    e.stopPropagation()
-    const newStatus = appt.status === 'absent' ? 'confirmed' : 'absent'
+
+  const handleToggleAbsentModal = async () => {
+    if (!editingAppointmentId) return
+    const currentEditingAppt = appointments.find(a => String(a.id) === String(editingAppointmentId))
+    if (!currentEditingAppt) return
+
+    const newStatus = currentEditingAppt.status === 'absent' ? 'confirmed' : 'absent'
 
     setAppointments(prev =>
-      prev.map(a => (a.id === appt.id ? { ...a, status: newStatus } : a))
+      prev.map(a => (a.id === editingAppointmentId ? { ...a, status: newStatus } : a))
     )
 
     try {
-      const response = await fetch(`${API_URL}/api/appointments/${appt.id}`, {
+      const response = await fetch(`${API_URL}/api/appointments/${editingAppointmentId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -490,13 +549,16 @@ export default function Agenda() {
 
       if (!response.ok) {
         setAppointments(prev =>
-          prev.map(a => (a.id === appt.id ? { ...a, status: appt.status } : a))
+          prev.map(a => (a.id === editingAppointmentId ? { ...a, status: currentEditingAppt.status } : a))
         )
+      } else {
+        setIsNewAppointmentModalOpen(false)
+        setEditingAppointmentId(null)
       }
     } catch (err) {
       console.error("Erro ao alterar status ausente:", err)
       setAppointments(prev =>
-        prev.map(a => (a.id === appt.id ? { ...a, status: appt.status } : a))
+        prev.map(a => (a.id === editingAppointmentId ? { ...a, status: currentEditingAppt.status } : a))
       )
     }
   }
@@ -606,7 +668,7 @@ export default function Agenda() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-background text-foreground pt-24 pb-28 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-transparent text-foreground pt-24 pb-28 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -841,6 +903,34 @@ export default function Agenda() {
                 <div>
                   <h3 className="font-display font-black text-lg tracking-wide text-foreground uppercase flex items-center gap-2">
                     <span>AGENDA</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsRealtimeEnabled(prev => !prev)}
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
+                        isRealtimeEnabled
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                          : "bg-background/40 border-border/40 text-muted-foreground/60 hover:text-foreground"
+                      }`}
+                      title={
+                        isRealtimeEnabled
+                          ? "Realtime Ativo (Atualizando agendamentos a cada 5s). Clique para pausar."
+                          : "Realtime Pausado. Clique para ativar."
+                      }
+                    >
+                      <span className="relative flex h-1.5 w-1.5">
+                        {isRealtimeEnabled && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        )}
+                        <span
+                          className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                            isRealtimeEnabled ? "bg-emerald-500" : "bg-muted-foreground/40"
+                          }`}
+                        ></span>
+                      </span>
+                      <span className="text-[9px] uppercase tracking-wider font-mono">
+                        {isRealtimeEnabled ? "Ao Vivo" : "Off"}
+                      </span>
+                    </button>
                     {barberFilter && (() => {
                       const activeBarb = barbers.find(b => b.id === barberFilter)
                       return (
@@ -898,8 +988,8 @@ export default function Agenda() {
                     return (
                       <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground border border-dashed border-border/60 rounded-2xl bg-muted/5 h-full">
                         <CalendarIcon size={36} className="stroke-1 mb-3 text-muted-foreground/30 animate-pulse" />
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Nenhum compromisso</p>
-                        <p className="text-[10px] mt-1 text-muted-foreground/40">Para este dia selecionado.</p>
+                        <p className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground/60">Nenhum compromisso</p>
+                        <p className="text-[12px] mt-1 text-muted-foreground/40">Para este dia selecionado.</p>
                       </div>
                     )
                   }
@@ -913,7 +1003,7 @@ export default function Agenda() {
                         const apptTimeOnly = appt.appointment_time.split('T')[1] || ""
 
                         let endTimeOnly = ""
-                        const durationMin = appt.duration_minutes || 30
+                        const durationMin = appt.duration_minutes !== undefined && appt.duration_minutes !== null ? appt.duration_minutes : 30
                         if (apptTimeOnly) {
                           const [hours, minutes] = apptTimeOnly.split(':').map(Number)
                           if (!isNaN(hours) && !isNaN(minutes)) {
@@ -926,11 +1016,13 @@ export default function Agenda() {
                           }
                         }
 
-                        const durationText = durationMin === 60
-                          ? "1h"
-                          : durationMin > 60
-                            ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}min`
-                            : `${durationMin} min`
+                        const durationText = durationMin === 0
+                          ? "Livre"
+                          : durationMin === 60
+                            ? "1h"
+                            : durationMin > 60
+                              ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}min`
+                              : `${durationMin} min`
 
                         const barber = barbers.find(b => b.name === appt.barber_name || b.id === appt.barber_id)
                         const barberImg = appt.barber_photo || (barber && barber.photo ? barber.photo : null)
@@ -945,49 +1037,35 @@ export default function Agenda() {
                             >
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between gap-3">
-                                  <h4 className={`font-bold text-[12px] tracking-wide uppercase leading-tight group-hover:text-primary transition-colors flex items-center gap-2 flex-wrap ${isStruckThrough ? "line-through text-destructive" : "text-foreground"
+                                  <h4 className={`font-bold text-[14px] tracking-wide uppercase leading-tight transition-colors flex items-center gap-2 flex-wrap ${isStruckThrough ? "line-through text-destructive" : "text-foreground"
                                     }`}>
                                     <span>{user.role === 'client' ? `Profissional: ${appt.barber_name}` : appt.client_name}</span>
                                     {isCancelled && (
-                                      <span className="no-underline inline-block text-[8px] bg-destructive/20 border border-destructive/40 text-destructive px-1.5 py-0.5 rounded font-mono font-bold">
+                                      <span className="no-underline inline-block text-[10px] bg-destructive/20 border border-destructive/40 text-destructive px-1.5 py-0.5 rounded font-mono font-bold">
                                         CANCELADO
                                       </span>
                                     )}
                                     {isAbsent && (
-                                      <span className="no-underline inline-block text-[8px] bg-amber-500/20 border border-amber-500/40 text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold tracking-wider">
+                                      <span className="no-underline inline-block text-[10px] bg-amber-500/20 border border-amber-500/40 text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold tracking-wider">
                                         AUSENTE
                                       </span>
                                     )}
                                   </h4>
-
-                                  {/* Toggle Ausente */}
-                                  <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Ausente</span>
-                                    <label className="relative inline-flex items-center cursor-pointer select-none" title="Marcar/Desmarcar como Ausente">
-                                      <input
-                                        type="checkbox"
-                                        checked={isAbsent}
-                                        onChange={(e) => handleToggleAbsent(e, appt)}
-                                        className="sr-only peer"
-                                      />
-                                      <div className="w-7 h-4 bg-muted/70 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500"></div>
-                                    </label>
-                                  </div>
                                 </div>
 
-                                <p className={`text-[12px] leading-normal ${isStruckThrough ? "line-through text-muted-foreground/50" : "text-muted-foreground"
+                                <p className={`text-[14px] leading-normal ${isStruckThrough ? "line-through text-muted-foreground/50" : "text-muted-foreground"
                                   }`}>
                                   {appt.service_name}
                                 </p>
 
-                                <div className="flex items-center justify-between text-[12px] text-muted-foreground/75 pt-1.5 mt-1.5">
-                                  <div className="flex items-center gap-1.5 font-mono">
-                                    <Clock size={13} className={isStruckThrough ? "text-destructive/60" : "text-primary/70"} />
-                                    <span className={`text-[13px] font-bold ${isStruckThrough ? "line-through text-muted-foreground/60" : ""}`}>
+                                <div className="flex items-center justify-between text-[14px] text-muted-foreground/75 pt-1.5 mt-1.5">
+                                  <div className="flex items-center gap-1.5 font-mono text-primary">
+                                    <Clock size={13} className={isStruckThrough ? "text-destructive/60" : "text-primary"} />
+                                    <span className={`text-[15px] font-bold ${isStruckThrough ? "line-through text-muted-foreground/60" : "text-primary"}`}>
                                       {apptTimeOnly}{endTimeOnly ? ` às ${endTimeOnly}` : ""}
                                     </span>
                                   </div>
-                                  <span className={`font-medium font-mono text-[11px] px-2 py-0.5 rounded-full ${isStruckThrough ? "line-through bg-destructive/10 text-destructive/70" : "bg-muted/30 text-muted-foreground/90"
+                                  <span className={`font-bold font-mono text-[13px] px-2 py-0.5 rounded-full ${isStruckThrough ? "line-through bg-destructive/10 text-destructive/70" : "bg-primary/15 text-primary border border-primary/40"
                                     }`}>{durationText}</span>
                                 </div>
                               </div>
@@ -1001,14 +1079,10 @@ export default function Agenda() {
                                       <User size={24} className="text-muted-foreground/45" />
                                     )}
                                   </div>
-                                  <span className={`text-[13px] font-bold leading-none ${isStruckThrough ? "line-through text-muted-foreground/60" : "text-foreground/80"}`}>
+                                  <span className={`text-[15px] font-bold leading-none ${isStruckThrough ? "line-through text-muted-foreground/60" : "text-foreground/80"}`}>
                                     {appt.barber_name ? appt.barber_name.split(' ')[0] : 'Barbeiro'}
                                   </span>
                                 </div>
-                                <span className={`font-bold font-['Bebas_Neue'] text-[14pt] tracking-wider ${isStruckThrough ? "line-through text-muted-foreground/50" : "text-primary"
-                                  }`}>
-                                  R$ {appt.service_price ? appt.service_price.toFixed(2).replace('.', ',') : '0,00'}
-                                </span>
                               </div>
                             </div>
                           </div>
@@ -1026,7 +1100,7 @@ export default function Agenda() {
       {/* MODAL DE CONFIRMAÇÃO PERSONALIZADO */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="glass-card w-full max-w-sm border border-destructive/20 rounded-2xl p-6 md:p-8 shadow-elevated relative animate-scale-in text-center">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-sm border border-destructive/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in text-center">
             <div className="mx-auto w-12 h-12 bg-destructive/10 border border-destructive/25 text-destructive rounded-full flex items-center justify-center mb-4 animate-bounce">
               <AlertTriangle size={24} />
             </div>
@@ -1062,7 +1136,7 @@ export default function Agenda() {
       {/* MODAL DE CADASTRO RÁPIDO DE NOVO CLIENTE */}
       {isNewCustomerModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fade-in">
-          <div className="glass-card w-full max-w-md border border-gold-subtle rounded-2xl p-6 md:p-8 shadow-elevated relative animate-scale-in">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-md border border-primary/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold font-display text-primary flex items-center gap-2">
                 <UserPlus size={20} /> Cadastrar Novo Cliente
@@ -1136,7 +1210,7 @@ export default function Agenda() {
       {/* MODAL DE CRIAÇÃO DE NOVOS AGENDAMENTOS */}
       {isNewAppointmentModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="glass-card w-full max-w-lg border border-gold-subtle rounded-2xl p-6 md:p-8 shadow-elevated relative animate-scale-in max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-lg border border-primary/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold font-display mb-6 text-primary flex items-center gap-2">
               {editingAppointmentId ? <Edit3 size={20} /> : <Plus size={20} />}
               {editingAppointmentId ? "Editar Agendamento" : "Novo Agendamento"}
@@ -1391,17 +1465,55 @@ export default function Agenda() {
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-border/40 mt-6 flex-wrap">
-                {editingAppointmentId && (
-                  <button
-                    type="button"
-                    onClick={handleCancelAppointment}
-                    disabled={submitLoading}
-                    className="py-3 px-4 bg-destructive/10 border border-destructive/30 hover:bg-destructive/20 text-destructive text-xs uppercase tracking-wider font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Trash2 size={14} />
-                    <span>Cancelar Agenda</span>
-                  </button>
-                )}
+                {editingAppointmentId && (() => {
+                  const currentEditingAppt = appointments.find(a => String(a.id) === String(editingAppointmentId))
+                  const isCurrentApptAbsent = currentEditingAppt ? currentEditingAppt.status === 'absent' : false
+                  const isCurrentApptCancelled = currentEditingAppt ? currentEditingAppt.status === 'cancelled' : false
+
+                  return (
+                    <>
+                      {!isCurrentApptCancelled && (
+                        <button
+                          type="button"
+                          onClick={handleToggleAbsentModal}
+                          disabled={submitLoading}
+                          className={`py-3 px-4 text-xs uppercase tracking-wider font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                            isCurrentApptAbsent
+                              ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30"
+                              : "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
+                          }`}
+                          title={isCurrentApptAbsent ? "Remover status Ausente" : "Marcar como Ausente"}
+                        >
+                          <UserX size={14} />
+                          <span>{isCurrentApptAbsent ? "REMOVER AUSENTE" : "MARCAR AUSENTE"}</span>
+                        </button>
+                      )}
+
+                      {isCurrentApptCancelled ? (
+                        <button
+                          type="button"
+                          onClick={handleUncancelAppointment}
+                          disabled={submitLoading}
+                          className="py-3 px-4 bg-emerald-500/15 border border-emerald-500/40 hover:bg-emerald-500/25 text-emerald-400 text-xs uppercase tracking-wider font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          title="Desfazer cancelamento e reativar agendamento"
+                        >
+                          <RotateCcw size={14} />
+                          <span>DESFAZER CANCELAMENTO</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleCancelAppointment}
+                          disabled={submitLoading}
+                          className="py-3 px-4 bg-destructive/10 border border-destructive/30 hover:bg-destructive/20 text-destructive text-xs uppercase tracking-wider font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Trash2 size={14} />
+                          <span>CANCELAR</span>
+                        </button>
+                      )}
+                    </>
+                  )
+                })()}
 
                 <button
                   type="button"

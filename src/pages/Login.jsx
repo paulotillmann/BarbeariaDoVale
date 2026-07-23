@@ -101,7 +101,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-hero-gradient flex flex-col justify-center items-center px-4 relative pt-20">
+    <div className="min-h-screen bg-transparent flex flex-col justify-center items-center px-4 relative pt-20">
       {/* Background elements */}
       <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-primary/5 rounded-full blur-[100px]"></div>
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-accent/5 rounded-full blur-[120px]"></div>
