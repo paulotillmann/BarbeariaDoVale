@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { LayoutDashboard, CalendarDays, Users, Scissors, Package, User, Settings, LogOut, ChevronLeft, ChevronRight } from "lucide-react"
+import { LayoutDashboard, CalendarDays, CalendarRange, Users, Scissors, Package, User, Settings, LogOut, ChevronLeft, ChevronRight, Wallet } from "lucide-react"
 import { useAuth } from "../context/AuthContext.jsx"
 
 export default function Sidebar() {
@@ -24,15 +24,23 @@ export default function Sidebar() {
   const baseSidebarOptions = [
     { id: "dashboard", label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={20} /> },
     { id: "agenda", label: "Agenda", path: "/agenda", icon: <CalendarDays size={20} /> },
+    { id: "agenda-barbeiros", label: "Agenda Barbeiros", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
     { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
+    { id: "caixa", label: "Fluxo de Caixa", path: "/caixa", icon: <Wallet size={20} /> },
     { id: "servicos", label: "Serviços", path: "/servicos", icon: <Scissors size={20} /> },
     { id: "produtos", label: "Produtos", path: "/produtos", icon: <Package size={20} /> },
     { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> }
   ]
 
-  const sidebarOptions = user.role === 'admin'
-    ? [...baseSidebarOptions, { id: "configuracoes", label: "Configurações", path: "/configuracoes", icon: <Settings size={20} /> }]
-    : baseSidebarOptions
+  let sidebarOptions = baseSidebarOptions
+  if (user.role === 'admin') {
+    sidebarOptions = [...baseSidebarOptions, { id: "configuracoes", label: "Configurações", path: "/configuracoes", icon: <Settings size={20} /> }]
+  } else if (user.role === 'barber') {
+    sidebarOptions = baseSidebarOptions.filter(opt => ['agenda', 'agenda-barbeiros', 'clientes'].includes(opt.id))
+  } else {
+    // Secretário(a)
+    sidebarOptions = baseSidebarOptions
+  }
 
   const currentPath = location.pathname
 
@@ -110,14 +118,18 @@ export default function Sidebar() {
           <div className={`sidebar-smooth-transition duration-700 flex flex-col gap-2 ${
             isCollapsed ? "opacity-0 pointer-events-none absolute inset-x-0 bottom-0 scale-95" : "opacity-100 relative scale-100"
           }`}>
-            <div className="text-center">
-              <div className="text-[10px] font-bold text-black truncate max-w-[170px] mx-auto">
+            <Link 
+              to="/meu-perfil" 
+              title="Clique para editar seu perfil"
+              className="text-center group block hover:opacity-80 transition-all cursor-pointer p-1 rounded-xl hover:bg-black/10"
+            >
+              <div className="text-[10px] font-bold text-black truncate max-w-[170px] mx-auto group-hover:underline">
                 {user.name}
               </div>
-              <div className="text-[8px] font-extrabold text-black/50 uppercase tracking-widest mt-0.5">
-                {user.role === 'admin' ? 'Administrador' : user.role === 'barber' ? 'Barbeiro' : 'Cliente VIP'}
+              <div className="text-[8px] font-extrabold text-black/60 uppercase tracking-widest mt-0.5">
+                {user.role === 'admin' ? 'Administrador' : user.role === 'barber' ? 'Barbeiro' : 'Secretário(a)'}
               </div>
-            </div>
+            </Link>
             {user.role === 'admin' && (
               <Link
                 to="/configuracoes"

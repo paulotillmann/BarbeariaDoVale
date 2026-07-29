@@ -193,12 +193,18 @@ img[src*="logo-nova"] {
 }
 
 @media (min-width: 1024px) {
+  .sidebar-page-container {
+    padding-left: 274px !important;
+    padding-right: 40px !important;
+  }
+
   body[data-sidebar-collapsed="true"] .sidebar-page-container {
-    padding-left: 140px !important;
+    padding-left: 152px !important;
+    padding-right: 40px !important;
   }
 
   body[data-sidebar-collapsed="true"] .sidebar-fixed-content {
-    left: 140px !important;
+    left: 152px !important;
   }
 }
 

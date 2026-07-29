@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
-import { Scissors, Plus, Pencil, Trash2, Clock, Sparkles, Flame, CheckCircle2, AlertTriangle, Check } from "lucide-react"
+import { Scissors, Plus, Pencil, Trash2, Clock, Sparkles, Flame, CheckCircle2, AlertTriangle, Check, Lock } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
 export default function Servicos() {
@@ -19,6 +19,7 @@ export default function Servicos() {
   const [serviceDurationMinutes, setServiceDurationMinutes] = useState(30)
   const [servicePrice, setServicePrice] = useState("")
   const [serviceBarbers, setServiceBarbers] = useState([])
+  const [serviceRestrictedAccess, setServiceRestrictedAccess] = useState(false)
   const [serviceSubmitting, setServiceSubmitting] = useState(false)
   const [serviceError, setServiceError] = useState("")
   const [serviceSuccess, setServiceSuccess] = useState("")
@@ -82,6 +83,7 @@ export default function Servicos() {
     setServiceDurationMinutes(30)
     setServicePrice("")
     setServiceBarbers([])
+    setServiceRestrictedAccess(false)
   }
 
   const handleEditServiceClick = (srv) => {
@@ -97,6 +99,7 @@ export default function Servicos() {
     })
     setServicePrice(formattedPrice)
     setServiceBarbers(srv.barber_ids || [])
+    setServiceRestrictedAccess(Boolean(srv.restricted_access || srv.acesso_restrito))
     setIsServiceModalOpen(true)
   }
 
@@ -134,7 +137,9 @@ export default function Servicos() {
       description: serviceDescription.trim(),
       duration_minutes: Number(serviceDurationMinutes),
       price: priceFloat,
-      barber_ids: serviceBarbers
+      barber_ids: serviceBarbers,
+      restricted_access: serviceRestrictedAccess ? 1 : 0,
+      acesso_restrito: serviceRestrictedAccess
     }
 
     try {
@@ -168,6 +173,8 @@ export default function Servicos() {
         description: data.service.description,
         duration_minutes: data.service.duration_minutes,
         price: data.service.price,
+        restricted_access: data.service.restricted_access ?? (serviceRestrictedAccess ? 1 : 0),
+        acesso_restrito: data.service.acesso_restrito ?? serviceRestrictedAccess,
         barber_ids: data.service.barber_ids || []
       }
 
@@ -222,7 +229,7 @@ export default function Servicos() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 pr-[40px] pl-4 md:pl-8 relative lg:pl-[274px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -232,8 +239,8 @@ export default function Servicos() {
       {/* Sidebar de Navegação */}
       <Sidebar />
 
-      <div className="container mx-auto max-w-5xl relative z-10 animate-fade-in">
-        <div className="space-y-6">
+      <div className="w-full relative z-10 animate-fade-in">
+        <div className="space-y-6 mt-[40px]">
           {serviceSuccess && (
             <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 shadow-sm animate-fade-in">
               <CheckCircle2 size={18} className="shrink-0" />
@@ -250,8 +257,8 @@ export default function Servicos() {
           <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 md:p-8 shadow-elevated">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
               <div>
-                <h2 className="text-xl font-bold font-display mb-2 flex items-center gap-2">
-                  <Scissors className="text-primary w-5 h-5" /> Nosso Catálogo de Serviços
+                <h2 className="text-[18pt] font-bold font-display mb-2 flex items-center gap-2">
+                  <Scissors className="text-primary w-6 h-6" /> Nosso Catálogo de Serviços
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   Confira nossos procedimentos, tempos de execução e valores. Serviços executados sob medida com padrão de excelência.
@@ -270,7 +277,7 @@ export default function Servicos() {
               )}
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
               {(services.length > 0 ? services : [
                 { id: "srv-corte", name: "Corte de Cabelo", price: 55, duration_minutes: 30, description: "Corte clássico com acabamento perfeito realizado pelos nossos profissionais de ponta." },
                 { id: "srv-barba", name: "Barba Completa", price: 45, duration_minutes: 30, description: "Barboterapia completa com toalha quente, óleos essenciais e massagem facial." },
@@ -282,10 +289,17 @@ export default function Servicos() {
                   return <Sparkles size={20} className="text-primary" />
                 }
                 return (
-                  <div key={srv.id} className="bg-muted/30 border border-border/70 rounded-2xl p-6 hover:border-primary/45 transition-all duration-300 shadow-sm flex flex-col justify-between relative overflow-hidden group">
+                  <div key={srv.id} className="bg-muted/30 border border-border/70 rounded-2xl p-5 hover:border-primary/45 transition-all duration-300 shadow-sm flex flex-col justify-between relative overflow-hidden group">
                     <div>
-                      <div className="w-12 h-12 bg-background border border-border/60 rounded-xl flex items-center justify-center mb-4 text-primary group-hover:scale-105 transition-transform duration-300">
-                        {getServiceIcon(srv.id)}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-background border border-border/60 rounded-xl flex items-center justify-center text-primary group-hover:scale-105 transition-transform duration-300">
+                          {getServiceIcon(srv.id)}
+                        </div>
+                        {(srv.restricted_access || srv.acesso_restrito) ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/15 border border-amber-500/30 text-amber-400 font-semibold px-2 py-0.5 rounded-full" title="Oculto no catálogo da Landing Page">
+                            <Lock size={10} /> Restrito
+                          </span>
+                        ) : null}
                       </div>
                       <h4 className="font-bold text-base tracking-wide text-foreground mb-2">{srv.name}</h4>
                       <p className="text-xs text-muted-foreground leading-relaxed mb-6">{srv.description || "Procedimento Do Vale de alto padrão"}</p>
@@ -452,6 +466,37 @@ export default function Servicos() {
                     className="w-full bg-background border border-border focus:border-primary rounded-xl py-3 px-4 text-sm text-foreground focus:outline-none transition-all font-mono text-right"
                   />
                 </div>
+              </div>
+
+              {/* Toggle de Acesso Restrito */}
+              <div className="flex items-center justify-between p-3.5 bg-background border border-border/80 rounded-xl">
+                <div className="space-y-0.5 pr-4">
+                  <div className="flex items-center gap-2">
+                    <Lock size={14} className={serviceRestrictedAccess ? "text-primary" : "text-muted-foreground"} />
+                    <label htmlFor="restricted-access-toggle" className="text-xs font-bold uppercase tracking-wider text-foreground cursor-pointer">
+                      Acesso Restrito
+                    </label>
+                  </div>
+                  <p className="text-[10pt] text-white font-medium leading-tight">
+                    Quando ativo, este serviço não será exibido no catálogo da Landing Page.
+                  </p>
+                </div>
+                <button
+                  id="restricted-access-toggle"
+                  type="button"
+                  role="switch"
+                  aria-checked={serviceRestrictedAccess}
+                  onClick={() => setServiceRestrictedAccess(prev => !prev)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    serviceRestrictedAccess ? 'bg-primary' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      serviceRestrictedAccess ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
 
               <div className="space-y-1">

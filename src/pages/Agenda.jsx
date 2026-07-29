@@ -188,18 +188,28 @@ export default function Agenda() {
     if (!targetBarberId || !dateString || !timeString) return false
 
     const barbObj = barbers.find(b => String(b.id) === String(targetBarberId))
-    const barbId = targetBarberId
     const barbName = barbObj ? barbObj.name : null
 
     const [slotH, slotM] = timeString.split(':').map(Number)
     if (isNaN(slotH) || isNaN(slotM)) return false
-    
-    // Se o serviço selecionado no formulário tem duração 0 min (Livre), ele NÃO ocupa horário
-    if (totalDurationMinutes === 0) return false
+
+    // Se há serviços selecionados e a duração for 0 min (Livre), ele NÃO ocupa horário
+    if (selectedServices.length > 0 && totalDurationMinutes === 0) return false
 
     const slotStartMinutes = slotH * 60 + slotM
-    const requestedDuration = totalDurationMinutes
+    const requestedDuration = selectedServices.length > 0 ? totalDurationMinutes : 30
     const slotEndMinutes = slotStartMinutes + requestedDuration
+
+    // Verificar se ultrapassa o horário de funcionamento da barbearia
+    const dateParts = dateString.split("-")
+    if (dateParts.length === 3) {
+      const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
+      const dayOfWeek = dateObj.getDay()
+      if (dayOfWeek === 0) return true // Domingo fechado
+      const closingHour = dayOfWeek === 6 ? 16 : 19
+      const closingMinutes = closingHour * 60
+      if (slotEndMinutes > closingMinutes) return true
+    }
 
     return appointments.some(appt => {
       // Ignorar agendamentos cancelados
@@ -212,7 +222,7 @@ export default function Agenda() {
       if (!appt.appointment_time || !appt.appointment_time.startsWith(dateString)) return false
 
       // Verificar se é do mesmo barbeiro
-      const matchesBarberId = appt.barber_id && String(appt.barber_id) === String(barbId)
+      const matchesBarberId = appt.barber_id && String(appt.barber_id) === String(targetBarberId)
       const matchesBarberName = barbName && appt.barber_name && appt.barber_name.toLowerCase() === barbName.toLowerCase()
       if (!matchesBarberId && !matchesBarberName) return false
 
@@ -225,7 +235,7 @@ export default function Agenda() {
 
       const apptStartMinutes = apptH * 60 + apptM
       const apptDuration = appt.duration_minutes !== undefined && appt.duration_minutes !== null ? appt.duration_minutes : 30
-      
+
       // Se o agendamento existente tem duração 0 min (Livre), ele NÃO ocupa nenhum horário
       if (apptDuration === 0) return false
 
@@ -238,6 +248,16 @@ export default function Agenda() {
       return overlapStart < overlapEnd
     })
   }
+
+  // Efeito para resetar o horário se o serviço/profissional mudar e o horário pré-selecionado se tornar indisponível
+  useEffect(() => {
+    if (isNewAppointmentModalOpen && selectedTime && selectedDate && selectedBarber) {
+      if (isTimeSlotBooked(selectedDate, selectedTime, selectedBarber)) {
+        setSelectedTime("")
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedServices, selectedBarber, selectedDate, selectedTime, isNewAppointmentModalOpen])
 
   const refreshCustomers = async () => {
     try {
@@ -906,11 +926,10 @@ export default function Agenda() {
                     <button
                       type="button"
                       onClick={() => setIsRealtimeEnabled(prev => !prev)}
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
-                        isRealtimeEnabled
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${isRealtimeEnabled
                           ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
                           : "bg-background/40 border-border/40 text-muted-foreground/60 hover:text-foreground"
-                      }`}
+                        }`}
                       title={
                         isRealtimeEnabled
                           ? "Realtime Ativo (Atualizando agendamentos a cada 5s). Clique para pausar."
@@ -922,9 +941,8 @@ export default function Agenda() {
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         )}
                         <span
-                          className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
-                            isRealtimeEnabled ? "bg-emerald-500" : "bg-muted-foreground/40"
-                          }`}
+                          className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isRealtimeEnabled ? "bg-emerald-500" : "bg-muted-foreground/40"
+                            }`}
                         ></span>
                       </span>
                       <span className="text-[9px] uppercase tracking-wider font-mono">
@@ -1042,7 +1060,7 @@ export default function Agenda() {
                                     <span>{user.role === 'client' ? `Profissional: ${appt.barber_name}` : appt.client_name}</span>
                                     {isCancelled && (
                                       <span className="no-underline inline-block text-[10px] bg-destructive/20 border border-destructive/40 text-destructive px-1.5 py-0.5 rounded font-mono font-bold">
-                                        CANCELADO
+                                        CANCELADO {appt.cancellation_reason ? `- ${appt.cancellation_reason}` : ""}
                                       </span>
                                     )}
                                     {isAbsent && (
@@ -1410,10 +1428,10 @@ export default function Agenda() {
                     </span>
                   </div>
                   <div className="text-right shrink-0 pl-2">
-                    <div className="font-bold text-primary text-base font-['Bebas_Neue'] tracking-wide">
+                    <div className="font-bold text-primary text-[12pt] font-mono tracking-wide">
                       R$ {totalPriceCalculated.toFixed(2).replace('.', ',')}
                     </div>
-                    <div className="text-[10px] text-muted-foreground font-mono font-bold">
+                    <div className="text-[10pt] text-muted-foreground font-mono font-bold">
                       ⏱️ {totalDurationMinutes} min {selectedTime && calculatedEndTime ? `(${selectedTime} - ${calculatedEndTime})` : ""}
                     </div>
                   </div>
@@ -1477,11 +1495,10 @@ export default function Agenda() {
                           type="button"
                           onClick={handleToggleAbsentModal}
                           disabled={submitLoading}
-                          className={`py-3 px-4 text-xs uppercase tracking-wider font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
-                            isCurrentApptAbsent
+                          className={`py-3 px-4 text-xs uppercase tracking-wider font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${isCurrentApptAbsent
                               ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30"
                               : "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
-                          }`}
+                            }`}
                           title={isCurrentApptAbsent ? "Remover status Ausente" : "Marcar como Ausente"}
                         >
                           <UserX size={14} />

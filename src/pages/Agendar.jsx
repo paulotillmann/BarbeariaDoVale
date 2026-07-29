@@ -8,6 +8,7 @@ export default function Agendar() {
 
   const [services, setServices] = useState([])
   const [barbers, setBarbers] = useState([])
+  const [appointments, setAppointments] = useState([])
 
   // Etapas do fluxo de agendamento (1, 2 ou 3)
   const [bookingStep, setBookingStep] = useState(1)
@@ -41,7 +42,7 @@ export default function Agendar() {
     }
   }, [user])
 
-  // Carregar dados iniciais de serviços e barbeiros
+  // Carregar dados iniciais de serviços, barbeiros e agendamentos existentes
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
@@ -50,7 +51,8 @@ export default function Agendar() {
         const srvRes = await fetch(`${API_URL}/api/services`)
         if (srvRes.ok) {
           const srvData = await srvRes.json()
-          setServices(srvData)
+          const publicServices = srvData.filter(s => !s.restricted_access && !s.acesso_restrito)
+          setServices(publicServices)
         } else {
           setServices([
             { id: "srv-corte", name: "Corte de Cabelo", price: 55, duration_minutes: 30, description: "Corte clássico com acabamento perfeito realizado pelos nossos profissionais de ponta." },
@@ -71,6 +73,19 @@ export default function Agendar() {
             { id: "barb-paulo", name: "PAULO TILLMANN" }
           ])
         }
+
+        // 3. Carregar Agendamentos Ocupados
+        try {
+          const apptEndpoint = token ? `${API_URL}/api/appointments` : `${API_URL}/api/appointments/occupied`
+          const apptHeaders = token ? { Authorization: `Bearer ${token}` } : {}
+          const apptRes = await fetch(apptEndpoint, { headers: apptHeaders })
+          if (apptRes.ok) {
+            const apptData = await apptRes.json()
+            setAppointments(apptData)
+          }
+        } catch (e) {
+          console.error("Erro ao carregar agendamentos ocupados:", e)
+        }
       } catch (err) {
         console.error("Erro ao carregar dados:", err)
         // Fallbacks
@@ -90,7 +105,7 @@ export default function Agendar() {
     }
 
     fetchData()
-  }, [])
+  }, [token])
 
   // Aplicar máscara no telefone brasileiro: (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
   const formatPhoneNumber = (value) => {
@@ -116,11 +131,11 @@ export default function Agendar() {
     const dayOfWeek = date.getDay() // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
 
     if (dayOfWeek === 0) return [] // Domingo
-    
+
     const slots = []
     let startHour = 9
     let endHour = dayOfWeek === 6 ? 16 : 19 // Sábado até 16:00, Seg-Sex até 19:00
-    
+
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
       slots.push(`${String(h).padStart(2, '0')}:30`)
@@ -135,6 +150,82 @@ export default function Agendar() {
     const now = new Date()
     return appointmentDateTime < now
   }
+
+  // Cálculo acumulado de duração para os serviços selecionados
+  const selectedServicesDetails = services.filter(s => selectedServices.includes(s.id))
+  const totalDurationMinutes = selectedServicesDetails.reduce((sum, s) => sum + (s.duration_minutes ?? 30), 0)
+
+  // Verificar se um horário de um barbeiro específico já está reservado/ocupado
+  const isTimeSlotBooked = (dateString, timeString, targetBarberId = selectedBarber) => {
+    if (!targetBarberId || !dateString || !timeString) return false
+
+    const barbObj = barbers.find(b => String(b.id) === String(targetBarberId))
+    const barbName = barbObj ? barbObj.name : null
+
+    const [slotH, slotM] = timeString.split(':').map(Number)
+    if (isNaN(slotH) || isNaN(slotM)) return false
+
+    // Se o serviço selecionado no formulário tem duração 0 min (Livre), ele NÃO ocupa horário
+    if (selectedServices.length > 0 && totalDurationMinutes === 0) return false
+
+    const slotStartMinutes = slotH * 60 + slotM
+    const requestedDuration = selectedServices.length > 0 ? totalDurationMinutes : 30
+    const slotEndMinutes = slotStartMinutes + requestedDuration
+
+    // Verificar se ultrapassa o horário de funcionamento da barbearia
+    const dateParts = dateString.split("-")
+    if (dateParts.length === 3) {
+      const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
+      const dayOfWeek = dateObj.getDay()
+      if (dayOfWeek === 0) return true // Domingo fechado
+      const closingHour = dayOfWeek === 6 ? 16 : 19
+      const closingMinutes = closingHour * 60
+      if (slotEndMinutes > closingMinutes) return true
+    }
+
+    return appointments.some(appt => {
+      // Ignorar agendamentos cancelados comuns, mas CONSIDERAR bloqueios de agenda (que possuem cancellation_reason)
+      if (appt.status === 'cancelled' && !appt.cancellation_reason) return false
+
+      // Verificar se é no mesmo dia
+      if (!appt.appointment_time || !appt.appointment_time.startsWith(dateString)) return false
+
+      // Verificar se é do mesmo barbeiro
+      const matchesBarberId = appt.barber_id && String(appt.barber_id) === String(targetBarberId)
+      const matchesBarberName = barbName && appt.barber_name && appt.barber_name.toLowerCase() === barbName.toLowerCase()
+      if (!matchesBarberId && !matchesBarberName) return false
+
+      // Extrair horário do agendamento existente
+      const timePart = appt.appointment_time.split('T')[1] || ""
+      if (!timePart) return false
+
+      const [apptH, apptM] = timePart.split(':').map(Number)
+      if (isNaN(apptH) || isNaN(apptM)) return false
+
+      const apptStartMinutes = apptH * 60 + apptM
+      const apptDuration = appt.duration_minutes !== undefined && appt.duration_minutes !== null ? appt.duration_minutes : 30
+
+      if (apptDuration === 0) return false
+
+      const apptEndMinutes = apptStartMinutes + apptDuration
+
+      // Verifica sobreposição entre intervalos [slotStart, slotEnd) e [apptStart, apptEnd)
+      const overlapStart = Math.max(slotStartMinutes, apptStartMinutes)
+      const overlapEnd = Math.min(slotEndMinutes, apptEndMinutes)
+
+      return overlapStart < overlapEnd
+    })
+  }
+
+  // Auto-resetar horário se a alteração de serviço/profissional o tornar indisponível
+  useEffect(() => {
+    if (selectedTime && selectedDate && selectedBarber) {
+      if (isTimeSlotBooked(selectedDate, selectedTime, selectedBarber)) {
+        setSelectedTime("")
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedServices, selectedBarber, selectedDate, selectedTime])
 
   // Renderizador do Calendário
   const renderCalendar = () => {
@@ -170,13 +261,12 @@ export default function Agendar() {
             setSelectedDate(dateString)
             setSelectedTime("")
           }}
-          className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center text-xs md:text-sm font-semibold transition-all cursor-pointer ${
-            isSelected
+          className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center text-xs md:text-sm font-semibold transition-all cursor-pointer ${isSelected
               ? "bg-primary text-primary-foreground shadow-gold scale-110"
               : isPast || isSunday
-              ? "text-muted-foreground/30 cursor-not-allowed"
-              : "hover:bg-primary/20 text-foreground"
-          }`}
+                ? "text-muted-foreground/30 cursor-not-allowed"
+                : "hover:bg-primary/20 text-foreground"
+            }`}
         >
           {day}
         </button>
@@ -200,11 +290,11 @@ export default function Agendar() {
           >
             &lt; Mês
           </button>
-          
+
           <div className="font-display font-bold text-xs md:text-sm text-foreground">
             {monthNames[calendarMonth]} de {calendarYear}
           </div>
-          
+
           <button
             type="button"
             onClick={() => {
@@ -269,6 +359,12 @@ export default function Agendar() {
       return
     }
 
+    if (isTimeSlotBooked(selectedDate, selectedTime, selectedBarber)) {
+      setError("O horário selecionado já está reservado para este barbeiro. Por favor, selecione outro horário.")
+      setBookingStep(3)
+      return
+    }
+
     setSubmitLoading(true)
     const appointmentTime = `${selectedDate}T${selectedTime}`
 
@@ -298,7 +394,7 @@ export default function Agendar() {
       }
 
       setSuccessMsg("Agendamento realizado com sucesso! Você receberá uma confirmação no WhatsApp.")
-      
+
       // Limpar formulário
       setSelectedServices([])
       setSelectedBarber("")
@@ -314,7 +410,7 @@ export default function Agendar() {
 
   return (
     <div className="min-h-screen bg-transparent text-foreground pt-24 pb-12 px-4 md:px-8 flex flex-col items-center justify-center">
-      
+
       {/* Botão Voltar */}
       <Link
         to="/"
@@ -325,7 +421,7 @@ export default function Agendar() {
       </Link>
 
       <div className="w-full max-w-4xl glass-card border border-gold-subtle rounded-2xl p-6 md:p-10 shadow-elevated z-10">
-        
+
         {/* Header */}
         <div className="text-center max-w-xl mx-auto mb-8">
           <h1 className="font-rye text-3xl md:text-4xl font-bold mb-2 tracking-wide uppercase gold-text">
@@ -368,7 +464,7 @@ export default function Agendar() {
             {/* Indicador de Etapas */}
             <div className="flex items-center justify-between mb-10 max-w-md mx-auto relative select-none">
               <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-border -translate-y-1/2 z-0"></div>
-              <div 
+              <div
                 className="absolute top-1/2 left-0 h-0.5 bg-primary -translate-y-1/2 z-0 transition-all duration-500"
                 style={{ width: `${((bookingStep - 1) / 2) * 100}%` }}
               ></div>
@@ -386,13 +482,12 @@ export default function Agendar() {
                       setBookingStep(3)
                     }
                   }}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm z-10 transition-all cursor-pointer ${
-                    bookingStep === s
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm z-10 transition-all cursor-pointer ${bookingStep === s
                       ? "bg-primary text-primary-foreground ring-4 ring-primary/20 scale-110"
                       : bookingStep > s
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-card border border-border text-muted-foreground"
-                  }`}
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-card border border-border text-muted-foreground"
+                    }`}
                 >
                   {s}
                 </button>
@@ -400,7 +495,7 @@ export default function Agendar() {
             </div>
 
             <form onSubmit={handleCreateAppointment} className="space-y-6">
-              
+
               {/* ETAPA 1 */}
               {bookingStep === 1 && (
                 <div className="space-y-6">
@@ -449,18 +544,18 @@ export default function Agendar() {
                   <h3 className="font-display font-semibold text-xl text-foreground border-b border-border pb-2 text-center">
                     Profissional e Serviços
                   </h3>
-                  
+
                   {/* Selecionar Barbeiro */}
                   <div className="space-y-4 text-center">
                     <label className="text-sm md:text-base font-bold uppercase tracking-wider text-primary block">Selecione o Barbeiro</label>
                     <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12 py-2">
                       {barbers.slice(0, 3).map((barb, index) => {
                         const isSelected = selectedBarber === barb.id
-                        const barberPhoto = 
+                        const barberPhoto =
                           index === 0 ? "/assets/foto_marcio.png" :
-                          index === 1 ? "/assets/foto_lucas.png" :
-                          "/assets/foto_neto.png"
-                        
+                            index === 1 ? "/assets/foto_lucas.png" :
+                              "/assets/foto_neto.png"
+
                         return (
                           <button
                             key={barb.id}
@@ -469,14 +564,13 @@ export default function Agendar() {
                             className="bg-transparent border-none p-0 cursor-pointer focus:outline-none transition-transform"
                             title={barb.name}
                           >
-                            <div className={`relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 transition-all duration-300 shadow-lg ${
-                              isSelected 
-                                ? "border-primary ring-4 ring-primary/20 scale-110 shadow-gold" 
+                            <div className={`relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 transition-all duration-300 shadow-lg ${isSelected
+                                ? "border-primary ring-4 ring-primary/20 scale-110 shadow-gold"
                                 : "border-border/40 hover:border-primary/50 hover:scale-105"
-                            }`}>
-                              <img 
-                                src={barberPhoto} 
-                                alt={barb.name} 
+                              }`}>
+                              <img
+                                src={barberPhoto}
+                                alt={barb.name}
                                 className="w-full h-full object-cover object-top scale-110"
                               />
                             </div>
@@ -490,7 +584,7 @@ export default function Agendar() {
                   <div className="space-y-3">
                     <label className="text-sm md:text-base font-bold uppercase tracking-wider text-primary block text-center">Serviços Desejados (Pode marcar mais de um)</label>
                     <div className="space-y-3">
-                      {services.map(srv => {
+                      {services.filter(srv => !srv.restricted_access && !srv.acesso_restrito).map(srv => {
                         const isSelected = selectedServices.includes(srv.id)
                         return (
                           <button
@@ -503,16 +597,14 @@ export default function Agendar() {
                                 setSelectedServices(prev => [...prev, srv.id])
                               }
                             }}
-                            className={`w-full flex items-center justify-between p-4 rounded-xl border text-left transition-all cursor-pointer ${
-                              isSelected
+                            className={`w-full flex items-center justify-between p-4 rounded-xl border text-left transition-all cursor-pointer ${isSelected
                                 ? "border-primary bg-primary/10 text-foreground"
                                 : "border-border bg-background text-foreground hover:border-primary/40"
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${
-                                isSelected ? "border-primary bg-primary text-primary-foreground" : "border-border bg-transparent"
-                              }`}>
+                              <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-border bg-transparent"
+                                }`}>
                                 {isSelected && <span className="text-[10px] font-bold">✓</span>}
                               </div>
                               <div>
@@ -555,7 +647,7 @@ export default function Agendar() {
                   <h3 className="font-display font-semibold text-xl text-foreground border-b border-border pb-2 text-center">
                     Escolha a Data e Horário
                   </h3>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                     {/* Calendário */}
                     <div className="space-y-2">
@@ -568,7 +660,7 @@ export default function Agendar() {
                     {/* Horários */}
                     <div className="space-y-4">
                       <label className="text-sm md:text-base font-bold uppercase tracking-wider text-primary block text-center">Horários Disponíveis</label>
-                      
+
                       {!selectedDate ? (
                         <div className="p-6 text-center border border-dashed border-border rounded-2xl text-muted-foreground text-sm">
                           Por favor, selecione um dia no calendário ao lado para ver os horários.
@@ -581,21 +673,29 @@ export default function Agendar() {
                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[280px] overflow-y-auto pr-2">
                           {getTimeSlots(selectedDate).map(time => {
                             const isPast = isTimeSlotPast(selectedDate, time)
+                            const isBooked = isTimeSlotBooked(selectedDate, time, selectedBarber)
+                            const isDisabled = isPast || isBooked
+
                             return (
                               <button
                                 key={time}
                                 type="button"
-                                disabled={isPast}
+                                disabled={isDisabled}
                                 onClick={() => setSelectedTime(time)}
-                                className={`py-3 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center ${
-                                  selectedTime === time 
-                                    ? "bg-primary border-primary text-primary-foreground shadow-gold scale-105" 
+                                className={`py-3 text-xs font-bold rounded-xl border transition-all text-center flex flex-col items-center justify-center ${selectedTime === time
+                                    ? "bg-primary border-primary text-primary-foreground shadow-gold scale-105"
                                     : isPast
-                                    ? "bg-background/20 border-border/10 text-muted-foreground/30 cursor-not-allowed"
-                                    : "bg-background border-border text-foreground hover:border-primary/50"
-                                }`}
+                                      ? "bg-background/20 border-border/10 text-muted-foreground/30 cursor-not-allowed"
+                                      : isBooked
+                                        ? "bg-destructive/10 border-destructive/20 text-destructive/50 cursor-not-allowed"
+                                        : "bg-background border-border text-foreground hover:border-primary/50 cursor-pointer"
+                                  }`}
+                                title={isBooked ? "Horário já reservado com este barbeiro" : isPast ? "Horário encerrado" : ""}
                               >
-                                {time}
+                                <span>{time}</span>
+                                {isBooked && (
+                                  <span className="text-[9px] font-semibold text-destructive/70 leading-none mt-0.5">Ocupado</span>
+                                )}
                               </button>
                             )
                           })}

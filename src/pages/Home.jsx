@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import {
   Scissors,
@@ -14,6 +14,7 @@ import {
   MessageCircle
 } from "lucide-react"
 import Logo from "../components/Logo.jsx"
+import { API_URL } from "../context/AuthContext.jsx"
 
 const Instagram = (props) => (
   <svg
@@ -33,58 +34,85 @@ const Instagram = (props) => (
   </svg>
 )
 
+const DEFAULT_SERVICES = [
+  {
+    id: "srv-corte",
+    name: "CORTE",
+    description: "Corte clássico com acabamento perfeito realizado pelos nossos profissionais de ponta.",
+    duration_minutes: 30,
+    price: 55.00
+  },
+  {
+    id: "srv-barba",
+    name: "BARBA",
+    description: "Corte de barba com vaporizador. Técnica que utiliza vapor quente para suavizar os pelos faciais e abrir os poros, tornando o processo de barbear muito mais confortável e eficaz, além de hidratar a pele e reduzir irritações.",
+    duration_minutes: 30,
+    price: 55.00
+  },
+  {
+    id: "srv-barboterapia",
+    name: "BARBATERAPIA",
+    description: "Um serviço exclusivo e relaxante que vai além do tradicional corte de barba, oferecendo uma experiência completa de cuidados faciais. Envolve vaporizador, óleos essenciais, massagem facial e toalhas quentes.",
+    duration_minutes: 30,
+    price: 70.00
+  },
+  {
+    id: "srv-hidratacao",
+    name: "HIDRATAÇÃO",
+    description: "Tratamento que restaura a umidade e nutrientes dos fios masculinos, combatendo o ressecamento e danos externos. Proporciona cabelo mais macio, com brilho e visual saudável.",
+    duration_minutes: 30,
+    price: 35.00
+  },
+  {
+    id: "srv-sobrancelha",
+    name: "SOBRANCELHA",
+    description: "Procedimento que modela e alinha as sobrancelhas, realçando a expressão e a harmonia facial. Envolve a remoção precisa de pelos para criar um contorno natural e equilibrado.",
+    duration_minutes: 30,
+    price: 35.00
+  },
+  {
+    id: "srv-combo",
+    name: "CORTE E BARBA",
+    description: "Combo completo: corte clássico com acabamento perfeito e barba feita com vaporizador e toalha quente. O visual definitivo Do Vale.",
+    duration_minutes: 60,
+    price: 110.00
+  }
+]
 
 export default function Home() {
   const navigate = useNavigate()
+  const [servicesList, setServicesList] = useState(DEFAULT_SERVICES)
+
+  useEffect(() => {
+    async function loadServices() {
+      try {
+        const res = await fetch(`${API_URL}/api/services`)
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data) && data.length > 0) {
+            const publicServices = data.filter(s => !s.restricted_access && !s.acesso_restrito)
+            setServicesList(publicServices)
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao carregar serviços da API na Home:", err)
+      }
+    }
+    loadServices()
+  }, [])
 
   const handleBookingClick = () => {
     navigate("/agendar")
   }
 
-  const services = [
-    {
-      title: "CORTE",
-      desc: "Corte clássico com acabamento perfeito realizado pelos nossos profissionais de ponta.",
-      time: "30 min",
-      price: "R$ 55,00",
-      icon: <Scissors className="w-6 h-6" />
-    },
-    {
-      title: "BARBA",
-      desc: "Corte de barba com vaporizador. Técnica que utiliza vapor quente para suavizar os pelos faciais e abrir os poros, tornando o processo de barbear muito mais confortável e eficaz, além de hidratar a pele e reduzir irritações.",
-      time: "30 min",
-      price: "R$ 55,00",
-      icon: <Flame className="w-6 h-6" />
-    },
-    {
-      title: "BARBATERAPIA",
-      desc: "Um serviço exclusivo e relaxante que vai além do tradicional corte de barba, oferecendo uma experiência completa de cuidados faciais. Envolve vaporizador, óleos essenciais, massagem facial e toalhas quentes.",
-      time: "30 min",
-      price: "R$ 70,00",
-      icon: <Sparkles className="w-6 h-6" />
-    },
-    {
-      title: "HIDRATAÇÃO",
-      desc: "Tratamento que restaura a umidade e nutrientes dos fios masculinos, combatendo o ressecamento e danos externos. Proporciona cabelo mais macio, com brilho e visual saudável.",
-      time: "30 min",
-      price: "R$ 35,00",
-      icon: <Droplet className="w-6 h-6" />
-    },
-    {
-      title: "SOBRANCELHA",
-      desc: "Procedimento que modela e alinha as sobrancelhas, realçando a expressão e a harmonia facial. Envolve a remoção precisa de pelos para criar um contorno natural e equilibrado.",
-      time: "30 min",
-      price: "R$ 35,00",
-      icon: <Sparkles className="w-6 h-6" />
-    },
-    {
-      title: "CORTE E BARBA",
-      desc: "Combo completo: corte clássico com acabamento perfeito e barba feita com vaporizador e toalha quente. O visual definitivo Do Vale.",
-      time: "60 min",
-      price: "R$ 110,00",
-      icon: <Scissors className="w-6 h-6" />
-    }
-  ]
+  const getServiceIcon = (name = "", id = "") => {
+    const text = (String(name) + " " + String(id)).toLowerCase()
+    if (text.includes("barboterapia")) return <Sparkles className="w-6 h-6" />
+    if (text.includes("barba")) return <Flame className="w-6 h-6" />
+    if (text.includes("hidrata") || text.includes("trata")) return <Droplet className="w-6 h-6" />
+    if (text.includes("sobrancelha")) return <Sparkles className="w-6 h-6" />
+    return <Scissors className="w-6 h-6" />
+  }
 
 
 
@@ -201,34 +229,48 @@ export default function Home() {
 
           {/* Services Grid - Premium */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {services.map((svc, i) => (
-              <div
-                key={i}
-                className="rounded-2xl border border-gold-subtle glass-card shadow-elevated hover:-translate-y-2 transition-all duration-500 group flex flex-col justify-between overflow-hidden animate-slide-up"
-                style={{ animationDelay: `${i * 0.1}s` }}
-              >
-                <div className="p-8 md:p-10 flex-1 flex flex-col">
-                  {/* Icon Frame - Premium */}
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/15 to-accent/15 border border-gold-subtle flex items-center justify-center text-primary mb-8 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-500">
-                    {svc.icon}
-                  </div>
-                  {/* Title */}
-                  <h3 className="font-display text-xl lg:text-2xl font-bold mb-4 tracking-wide">{svc.title}</h3>
-                  {/* Desc */}
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-8 flex-1 line-clamp-[5]">
-                    {svc.desc}
-                  </p>
-                  {/* Info Footer - Premium */}
-                  <div className="flex items-center justify-between border-t border-gold-subtle pt-6 mt-auto">
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
-                      <Clock className="w-5 h-5 text-primary" />
-                      {svc.time}
+            {servicesList.map((svc, i) => {
+              const title = (svc.name || svc.title || "SERVIÇO").toUpperCase()
+              const desc = svc.description || svc.desc || "Procedimento Do Vale de alto padrão."
+              const durationText = svc.duration_minutes !== undefined 
+                ? (svc.duration_minutes === 0 ? "Livre" : `${svc.duration_minutes} min`) 
+                : (svc.time || "30 min")
+              
+              const priceFormatted = typeof svc.price === "number"
+                ? `R$ ${svc.price.toFixed(2).replace('.', ',')}`
+                : (svc.price ? String(svc.price) : "R$ 0,00")
+
+              const icon = getServiceIcon(svc.name || svc.title, svc.id)
+
+              return (
+                <div
+                  key={svc.id || i}
+                  className="rounded-2xl border border-gold-subtle glass-card shadow-elevated hover:-translate-y-2 transition-all duration-500 group flex flex-col justify-between overflow-hidden animate-slide-up"
+                  style={{ animationDelay: `${i * 0.1}s` }}
+                >
+                  <div className="p-8 md:p-10 flex-1 flex flex-col">
+                    {/* Icon Frame - Premium */}
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/15 to-accent/15 border border-gold-subtle flex items-center justify-center text-primary mb-8 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-500">
+                      {icon}
                     </div>
-                    <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid text-right">{svc.price}</div>
+                    {/* Title */}
+                    <h3 className="font-display text-xl lg:text-2xl font-bold mb-4 tracking-wide">{title}</h3>
+                    {/* Desc */}
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-8 flex-1 line-clamp-[5]">
+                      {desc}
+                    </p>
+                    {/* Info Footer - Premium */}
+                    <div className="flex items-center justify-between border-t border-gold-subtle pt-6 mt-auto">
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
+                        <Clock className="w-5 h-5 text-primary" />
+                        {durationText}
+                      </div>
+                      <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid text-right">{priceFormatted}</div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="text-center mt-16 md:mt-20">
@@ -418,7 +460,7 @@ export default function Home() {
                   <Clock className="w-5 h-5 mt-1 flex-shrink-0 text-primary" />
                   <div className="leading-relaxed">
                     <p className="font-semibold text-foreground mb-2 tracking-wide">Horário de Funcionamento</p>
-                    <p>Seg - Sex: 09:00 - 19:00</p>
+                    <p>Seg - Sex: 08:00 - 20:00</p>
                     <p>Sábado: 09:00 - 16:00</p>
                     <p>Domingo: Fechado</p>
                   </div>

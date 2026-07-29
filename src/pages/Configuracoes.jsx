@@ -114,10 +114,29 @@ export default function Configuracoes() {
     }
   }
 
+  const formatPhoneNumber = (value) => {
+    if (!value) return ""
+    const digits = value.replace(/[^\d]/g, "")
+    if (digits.length > 11) return formatPhoneNumber(digits.slice(0, 11))
+    if (digits.length > 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+    }
+    if (digits.length > 6) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+    }
+    if (digits.length > 2) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+    }
+    if (digits.length > 0) {
+      return `(${digits}`
+    }
+    return digits
+  }
+
   const handleEditUserClick = (usr) => {
     setEditingUserId(usr.id)
     setEditUserName(usr.name || "")
-    setEditUserPhone(usr.phone || "")
+    setEditUserPhone(formatPhoneNumber(usr.phone || ""))
     setEditUserEmail(usr.email || "")
     setEditUserRole(usr.role || "client")
     setUserModalError("")
@@ -291,8 +310,8 @@ export default function Configuracoes() {
                             }`}
                           >
                             <td className="py-3 px-4 font-semibold">
-                              <div className="truncate max-w-[140px]" title={usr.name}>{usr.name}</div>
-                              <div className="text-[9px] text-muted-foreground font-normal mt-0.5">{usr.phone || usr.email || "Sem contato"}</div>
+                              <div className="text-[12pt] font-bold text-foreground" title={usr.name}>{usr.name}</div>
+                              <div className="text-[10pt] text-muted-foreground font-normal mt-0.5">{usr.phone ? formatPhoneNumber(usr.phone) : usr.email || "Sem contato"}</div>
                             </td>
                             <td className="py-3 px-4">
                               <select
@@ -483,8 +502,9 @@ export default function Configuracoes() {
                 <input
                   type="text"
                   value={editUserPhone}
-                  onChange={(e) => setEditUserPhone(e.target.value)}
+                  onChange={(e) => setEditUserPhone(formatPhoneNumber(e.target.value))}
                   placeholder="Ex: (34) 98821-8498"
+                  maxLength={15}
                   className="w-full bg-background border border-border focus:border-primary rounded-xl py-3 px-4 text-sm text-foreground focus:outline-none transition-all"
                 />
               </div>

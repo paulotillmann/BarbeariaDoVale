@@ -77,7 +77,7 @@ export default function Dashboard() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 pr-[40px] pl-4 md:pl-8 relative lg:pl-[274px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -87,7 +87,7 @@ export default function Dashboard() {
       {/* Sidebar de Navegação */}
       <Sidebar />
 
-      <div className="container mx-auto max-w-5xl relative z-10 animate-fade-in">
+      <div className="w-full relative z-10 animate-fade-in">
         <div className="space-y-8">
           {/* Estatísticas / Grid de Resumo */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

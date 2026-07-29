@@ -152,7 +152,7 @@ app.post('/api/auth/register', async (c) => {
 
   const cleanPhone = phone ? phone.replace(/\D/g, "") : null;
   const cleanEmail = email ? email.trim().toLowerCase() : null;
-  const targetRole = role && ['client', 'barber'].includes(role) ? role : 'client';
+  const targetRole = role && ['secretario', 'barber', 'admin'].includes(role) ? role : 'secretario';
   const passwordHash = await hashPassword(password);
   const userId = crypto.randomUUID();
 
@@ -239,16 +239,102 @@ app.get('/api/auth/me', authMiddleware, async (c) => {
   return c.json({ user });
 });
 
+// 3.0.1 Atualizar Perfil do Usuário Atual (Meu Perfil e Senha)
+app.put('/api/auth/me', authMiddleware, async (c) => {
+  const currentUser = c.get('user');
+  try {
+    const { name, phone, email, currentPassword, newPassword } = await c.req.json();
+
+    if (!name || !name.trim()) {
+      return c.json({ error: 'O nome é obrigatório.' }, 400);
+    }
+
+    const cleanPhone = phone ? phone.replace(/\D/g, "") : null;
+    const cleanEmail = email ? email.trim().toLowerCase() : null;
+
+    let updatePasswordHash = null;
+    if (newPassword && newPassword.trim()) {
+      if (!currentPassword) {
+        return c.json({ error: 'Informe sua senha atual para alterar para uma nova senha.' }, 400);
+      }
+      const dbUser = await c.env.DB.prepare("SELECT password_hash FROM users WHERE id = ?").bind(currentUser.id).first();
+      const currentHash = await hashPassword(currentPassword);
+      if (!dbUser || dbUser.password_hash !== currentHash) {
+        return c.json({ error: 'A senha atual informada está incorreta.' }, 400);
+      }
+      if (newPassword.trim().length < 6) {
+        return c.json({ error: 'A nova senha deve ter no mínimo 6 caracteres.' }, 400);
+      }
+      updatePasswordHash = await hashPassword(newPassword.trim());
+    }
+
+    if (updatePasswordHash) {
+      await c.env.DB.prepare(`
+        UPDATE users 
+        SET name = ?, phone = ?, email = ?, password_hash = ?
+        WHERE id = ?
+      `).bind(name.trim(), cleanPhone, cleanEmail, updatePasswordHash, currentUser.id).run();
+    } else {
+      await c.env.DB.prepare(`
+        UPDATE users 
+        SET name = ?, phone = ?, email = ?
+        WHERE id = ?
+      `).bind(name.trim(), cleanPhone, cleanEmail, currentUser.id).run();
+    }
+
+    // Se o usuário atual for um barbeiro vinculado na tabela barbers, atualizamos também nome/telefone lá
+    await c.env.DB.prepare(`
+      UPDATE barbers SET name = ?, phone = ? WHERE user_id = ?
+    `).bind(name.trim(), phone ? phone.trim() : null, currentUser.id).run();
+
+    const updatedUser = {
+      ...currentUser,
+      name: name.trim(),
+      phone: cleanPhone,
+      email: cleanEmail
+    };
+
+    const token = await signJWT(updatedUser, c.env.JWT_SECRET || DEFAULT_JWT_SECRET);
+
+    return c.json({
+      success: true,
+      user: updatedUser,
+      token
+    });
+  } catch (e) {
+    if (e.message && e.message.includes("UNIQUE")) {
+      return c.json({ error: 'Este e-mail ou telefone já está em uso por outro usuário.' }, 400);
+    }
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 3.1 Listar Todos os Usuários
+app.get('/api/users', authMiddleware, async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare("SELECT id, name, phone, email, role FROM users ORDER BY name ASC").all();
+    return c.json(results);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // 4. Listar Serviços
 app.get('/api/services', async (c) => {
   try {
-    const { results: services } = await c.env.DB.prepare("SELECT id, name, description, duration_minutes, price FROM services").all();
+    try {
+      await c.env.DB.prepare("ALTER TABLE services ADD COLUMN restricted_access INTEGER DEFAULT 0").run();
+    } catch {}
+
+    const { results: services } = await c.env.DB.prepare("SELECT id, name, description, duration_minutes, price, COALESCE(restricted_access, 0) as restricted_access FROM services").all();
     const { results: relations } = await c.env.DB.prepare("SELECT service_id, barber_id FROM barber_services").all();
 
     const servicesWithBarbers = services.map(srv => {
       const srvRelations = relations.filter(r => r.service_id === srv.id);
       return {
         ...srv,
+        restricted_access: Number(srv.restricted_access || 0),
+        acesso_restrito: Boolean(srv.restricted_access),
         barber_ids: srvRelations.map(r => r.barber_id)
       };
     });
@@ -267,17 +353,22 @@ app.post('/api/services', authMiddleware, async (c) => {
   }
 
   try {
-    const { name, description, duration_minutes, price, barber_ids } = await c.req.json();
+    const { name, description, duration_minutes, price, barber_ids, restricted_access, acesso_restrito } = await c.req.json();
     if (!name || duration_minutes === undefined || duration_minutes === null || price === undefined) {
       return c.json({ error: 'Campos nome, duração e preço são obrigatórios.' }, 400);
     }
 
+    try {
+      await c.env.DB.prepare("ALTER TABLE services ADD COLUMN restricted_access INTEGER DEFAULT 0").run();
+    } catch {}
+
+    const isRestricted = (restricted_access !== undefined ? restricted_access : (acesso_restrito !== undefined ? acesso_restrito : 0)) ? 1 : 0;
     const serviceId = 'srv-' + crypto.randomUUID();
 
     // Inserir serviço
     await c.env.DB.prepare(
-      "INSERT INTO services (id, name, description, duration_minutes, price) VALUES (?, ?, ?, ?, ?)"
-    ).bind(serviceId, name, description || null, Number(duration_minutes), Number(price)).run();
+      "INSERT INTO services (id, name, description, duration_minutes, price, restricted_access) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(serviceId, name, description || null, Number(duration_minutes), Number(price), isRestricted).run();
 
     // Associar barbeiros
     if (Array.isArray(barber_ids) && barber_ids.length > 0) {
@@ -288,7 +379,19 @@ app.post('/api/services', authMiddleware, async (c) => {
       }
     }
 
-    return c.json({ success: true, service: { id: serviceId, name, description, duration_minutes, price, barber_ids } });
+    return c.json({
+      success: true,
+      service: {
+        id: serviceId,
+        name,
+        description,
+        duration_minutes,
+        price,
+        restricted_access: isRestricted,
+        acesso_restrito: Boolean(isRestricted),
+        barber_ids
+      }
+    });
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }
@@ -303,10 +406,16 @@ app.put('/api/services/:id', authMiddleware, async (c) => {
 
   const serviceId = c.req.param('id');
   try {
-    const { name, description, duration_minutes, price, barber_ids } = await c.req.json();
+    const { name, description, duration_minutes, price, barber_ids, restricted_access, acesso_restrito } = await c.req.json();
     if (!name || duration_minutes === undefined || duration_minutes === null || price === undefined) {
       return c.json({ error: 'Campos nome, duração e preço são obrigatórios.' }, 400);
     }
+
+    try {
+      await c.env.DB.prepare("ALTER TABLE services ADD COLUMN restricted_access INTEGER DEFAULT 0").run();
+    } catch {}
+
+    const isRestricted = (restricted_access !== undefined ? restricted_access : (acesso_restrito !== undefined ? acesso_restrito : 0)) ? 1 : 0;
 
     const existing = await c.env.DB.prepare("SELECT id FROM services WHERE id = ?").bind(serviceId).first();
     if (!existing) {
@@ -315,8 +424,8 @@ app.put('/api/services/:id', authMiddleware, async (c) => {
 
     // Atualizar serviço
     await c.env.DB.prepare(
-      "UPDATE services SET name = ?, description = ?, duration_minutes = ?, price = ? WHERE id = ?"
-    ).bind(name, description || null, Number(duration_minutes), Number(price), serviceId).run();
+      "UPDATE services SET name = ?, description = ?, duration_minutes = ?, price = ?, restricted_access = ? WHERE id = ?"
+    ).bind(name, description || null, Number(duration_minutes), Number(price), isRestricted, serviceId).run();
 
     // Remover associações antigas
     await c.env.DB.prepare("DELETE FROM barber_services WHERE service_id = ?").bind(serviceId).run();
@@ -330,7 +439,19 @@ app.put('/api/services/:id', authMiddleware, async (c) => {
       }
     }
 
-    return c.json({ success: true, service: { id: serviceId, name, description, duration_minutes, price, barber_ids } });
+    return c.json({
+      success: true,
+      service: {
+        id: serviceId,
+        name,
+        description,
+        duration_minutes,
+        price,
+        restricted_access: isRestricted,
+        acesso_restrito: Boolean(isRestricted),
+        barber_ids
+      }
+    });
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }
@@ -371,18 +492,162 @@ app.get('/api/barbers', async (c) => {
     try {
       await c.env.DB.prepare("ALTER TABLE barbers ADD COLUMN product_commission REAL DEFAULT 0").run();
     } catch { }
+    try {
+      await c.env.DB.prepare("ALTER TABLE barbers ADD COLUMN user_id TEXT REFERENCES users(id)").run();
+    } catch { }
 
     const countResult = await c.env.DB.prepare("SELECT COUNT(*) as count FROM barbers").first();
     if (countResult && countResult.count === 0) {
       await c.env.DB.prepare(`
-        INSERT INTO barbers (id, name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission)
-        SELECT id, name, phone, NULL, NULL, 'Especialista Do Vale', '2022-01-01', 0, 0 
+        INSERT INTO barbers (id, name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission, user_id)
+        SELECT id, name, phone, NULL, NULL, 'Especialista Do Vale', '2022-01-01', 0, 0, id 
         FROM users 
         WHERE role = 'barber'
       `).run();
     }
 
-    const { results } = await c.env.DB.prepare("SELECT id, name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission FROM barbers").all();
+    const { results } = await c.env.DB.prepare("SELECT id, name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission, user_id FROM barbers").all();
+    return c.json(results);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 5.0.1 Criar Barbeiro / Profissional (Admin / Secretário)
+app.post('/api/barbers', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  try {
+    const { name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission, user_id } = await c.req.json();
+    if (!name || !name.trim()) {
+      return c.json({ error: 'Nome do profissional é obrigatório.' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await c.env.DB.prepare(`
+      INSERT INTO barbers (id, name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission, user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      name.trim(),
+      phone ? phone.trim() : null,
+      photo ? photo.trim() : null,
+      birth_date || null,
+      specialty ? specialty.trim() : null,
+      hired_at || null,
+      Number(service_commission) || 0,
+      Number(product_commission) || 0,
+      user_id || null
+    ).run();
+
+    return c.json({
+      success: true,
+      barber: {
+        id,
+        name: name.trim(),
+        phone: phone ? phone.trim() : null,
+        photo: photo ? photo.trim() : null,
+        birth_date: birth_date || null,
+        specialty: specialty ? specialty.trim() : null,
+        hired_at: hired_at || null,
+        service_commission: Number(service_commission) || 0,
+        product_commission: Number(product_commission) || 0,
+        user_id: user_id || null
+      }
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 5.0.2 Editar Barbeiro / Profissional (Admin / Secretário)
+app.put('/api/barbers/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const { name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission, user_id } = await c.req.json();
+    if (!name || !name.trim()) {
+      return c.json({ error: 'Nome do profissional é obrigatório.' }, 400);
+    }
+
+    await c.env.DB.prepare(`
+      UPDATE barbers 
+      SET name = ?, phone = ?, photo = ?, birth_date = ?, specialty = ?, hired_at = ?, service_commission = ?, product_commission = ?, user_id = ?
+      WHERE id = ?
+    `).bind(
+      name.trim(),
+      phone ? phone.trim() : null,
+      photo ? photo.trim() : null,
+      birth_date || null,
+      specialty ? specialty.trim() : null,
+      hired_at || null,
+      Number(service_commission) || 0,
+      Number(product_commission) || 0,
+      user_id || null,
+      id
+    ).run();
+
+    return c.json({
+      success: true,
+      barber: {
+        id,
+        name: name.trim(),
+        phone: phone ? phone.trim() : null,
+        photo: photo ? photo.trim() : null,
+        birth_date: birth_date || null,
+        specialty: specialty ? specialty.trim() : null,
+        hired_at: hired_at || null,
+        service_commission: Number(service_commission) || 0,
+        product_commission: Number(product_commission) || 0,
+        user_id: user_id || null
+      }
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 5.0.3 Excluir Barbeiro / Profissional (Admin / Secretário)
+app.delete('/api/barbers/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    await c.env.DB.prepare("DELETE FROM barbers WHERE id = ?").bind(id).run();
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 5.1 Listar Horários Ocupados (Público)
+app.get('/api/appointments/occupied', async (c) => {
+  try {
+    const query = `
+      SELECT a.id, a.barber_id, a.appointment_time, a.status,
+             b.name as barber_name,
+             COALESCE(
+               (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+               s_single.duration_minutes,
+               30
+             ) as duration_minutes
+      FROM appointments a
+      LEFT JOIN barbers b ON (a.barber_id = b.id OR a.barber_id = b.user_id)
+      LEFT JOIN services s_single ON a.service_id = s_single.id
+      WHERE (a.status != 'cancelled' OR a.cancellation_reason IS NOT NULL)
+      ORDER BY a.appointment_time ASC
+    `;
+    const { results } = await c.env.DB.prepare(query).all();
     return c.json(results);
   } catch (e) {
     return c.json({ error: e.message }, 500);
@@ -393,24 +658,49 @@ app.get('/api/barbers', async (c) => {
 app.get('/api/appointments', authMiddleware, async (c) => {
   const user = c.get('user');
   try {
+    try {
+      await c.env.DB.prepare("ALTER TABLE appointments ADD COLUMN cancellation_reason TEXT").run();
+    } catch {}
+
+    try {
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO customers (id, name, phone) VALUES ('cust-bloqueio-sistema', 'Bloqueio de Agenda', '00000000000')"
+      ).run();
+      await c.env.DB.prepare(
+        "UPDATE appointments SET client_id = 'cust-bloqueio-sistema' WHERE status = 'cancelled' AND cancellation_reason IS NOT NULL AND (client_id IS NULL OR client_id != 'cust-bloqueio-sistema')"
+      ).run();
+    } catch {}
+
     let query = `
-      SELECT a.id, a.client_id, a.barber_id, a.appointment_time, a.status, 
-             COALESCE(cust.name, u.name, 'Cliente') as client_name, 
-             COALESCE(cust.phone, u.phone, '') as client_phone,
+      SELECT a.id, a.client_id, a.barber_id, a.appointment_time, a.status, a.cancellation_reason,
+             CASE 
+               WHEN a.status = 'cancelled' AND a.cancellation_reason IS NOT NULL THEN COALESCE(NULLIF(a.cancellation_reason, ''), 'Bloqueio de Agenda')
+               ELSE COALESCE(cust.name, u.name, 'Cliente') 
+             END as client_name, 
+             CASE 
+               WHEN a.status = 'cancelled' AND a.cancellation_reason IS NOT NULL THEN ''
+               ELSE COALESCE(cust.phone, u.phone, '') 
+             END as client_phone,
              b.name as barber_name, b.photo as barber_photo,
              a.service_id,
              COALESCE(
                (SELECT GROUP_CONCAT(aps.service_id, ',') FROM appointment_services aps WHERE aps.appointment_id = a.id),
                a.service_id
              ) as service_ids,
-             COALESCE(
-               (SELECT GROUP_CONCAT(s.name, ', ') FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
-               s_single.name
-             ) as service_name,
-             COALESCE(
-               (SELECT SUM(s.price) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
-               s_single.price
-             ) as service_price,
+             CASE 
+               WHEN a.status = 'cancelled' AND a.cancellation_reason IS NOT NULL THEN 'Bloqueio de Agenda'
+               ELSE COALESCE(
+                 (SELECT GROUP_CONCAT(s.name, ', ') FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+                 s_single.name
+               )
+             END as service_name,
+             CASE 
+               WHEN a.status = 'cancelled' AND a.cancellation_reason IS NOT NULL THEN 0
+               ELSE COALESCE(
+                 (SELECT SUM(s.price) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+                 s_single.price
+               )
+             END as service_price,
              COALESCE(
                (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
                s_single.duration_minutes
@@ -418,25 +708,116 @@ app.get('/api/appointments', authMiddleware, async (c) => {
       FROM appointments a
       LEFT JOIN users u ON a.client_id = u.id
       LEFT JOIN customers cust ON a.client_id = cust.id
-      JOIN barbers b ON a.barber_id = b.id
+      LEFT JOIN barbers b ON (a.barber_id = b.id OR a.barber_id = b.user_id)
       LEFT JOIN services s_single ON a.service_id = s_single.id
     `;
 
-
     let results;
-    if (user.role === 'client') {
-      query += " WHERE a.client_id = ? ORDER BY a.appointment_time DESC";
-      results = (await c.env.DB.prepare(query).bind(user.id).all()).results;
-    } else if (user.role === 'barber') {
-      query += " WHERE a.barber_id = ? ORDER BY a.appointment_time DESC";
-      results = (await c.env.DB.prepare(query).bind(user.id).all()).results;
+    if (user.role === 'barber') {
+      query += " WHERE (a.barber_id = ? OR b.user_id = ?) ORDER BY a.appointment_time DESC";
+      results = (await c.env.DB.prepare(query).bind(user.id, user.id).all()).results;
     } else {
-      // Admin vê tudo
+      // Admin e Secretário(a) veem todos os agendamentos
       query += " ORDER BY a.appointment_time DESC";
       results = (await c.env.DB.prepare(query).all()).results;
     }
 
     return c.json(results);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 6.1. Cancelar / Bloquear Intervalo de Horários (Preserva Agendamentos Existentes de Clientes)
+app.post('/api/appointments/cancel-range', authMiddleware, async (c) => {
+  try {
+    try {
+      await c.env.DB.prepare("ALTER TABLE appointments ADD COLUMN cancellation_reason TEXT").run();
+    } catch {}
+
+    const { barber_id, date, start_time, end_time, reason } = await c.req.json();
+
+    if (!barber_id || !date || !start_time || !end_time) {
+      return c.json({ error: 'Os campos barbeiro, data, horário de início e término são obrigatórios.' }, 400);
+    }
+
+    const cancelReason = (reason && reason.trim()) ? reason.trim() : 'Bloqueio de Agenda';
+
+    const [startH, startM] = start_time.split(':').map(Number);
+    const [endH, endM] = end_time.split(':').map(Number);
+
+    if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
+      return c.json({ error: 'Formato de horário inválido.' }, 400);
+    }
+
+    const startTotalMin = startH * 60 + startM;
+    const endTotalMin = endH * 60 + endM;
+
+    if (startTotalMin >= endTotalMin) {
+      return c.json({ error: 'O horário de término deve ser posterior ao horário de início.' }, 400);
+    }
+
+    // Buscar agendamentos existentes no dia para o barbeiro
+    const { results: existingAppts } = await c.env.DB.prepare(`
+      SELECT id, appointment_time, status, client_id
+      FROM appointments
+      WHERE barber_id = ? AND appointment_time LIKE ?
+    `).bind(barber_id, `${date}%`).all();
+
+    let createdCount = 0;
+
+    for (let currentMin = startTotalMin; currentMin < endTotalMin; currentMin += 30) {
+      const h = String(Math.floor(currentMin / 60)).padStart(2, '0');
+      const m = String(currentMin % 60).padStart(2, '0');
+      const slotTimeStr = `${date}T${h}:${m}`;
+
+      const existingAtSlot = existingAppts ? existingAppts.find(a => a.appointment_time === slotTimeStr) : null;
+
+      if (existingAtSlot) {
+        // REGRA DE OURO: Se tiver agendamento de cliente (confirmado, concluído ou com client_id), NÃO alterar e NÃO cancelar!
+        if (existingAtSlot.status === 'confirmed' || existingAtSlot.status === 'completed' || existingAtSlot.client_id) {
+          continue; // Preserva agendamento do cliente intacto
+        }
+        // Se já era um bloqueio/cancelamento sem cliente, atualiza o motivo
+        if (existingAtSlot.status === 'cancelled') {
+          await c.env.DB.prepare(`
+            UPDATE appointments SET cancellation_reason = ? WHERE id = ?
+          `).bind(cancelReason, existingAtSlot.id).run();
+          createdCount++;
+          continue;
+        }
+      }
+
+      // Slot livre: cria o registro de bloqueio/cancelamento
+      const apptId = crypto.randomUUID();
+      try {
+        await c.env.DB.prepare(`
+          INSERT INTO appointments (id, client_id, barber_id, service_id, appointment_time, status, cancellation_reason)
+          VALUES (?, NULL, ?, NULL, ?, 'cancelled', ?)
+        `).bind(apptId, barber_id, slotTimeStr, cancelReason).run();
+      } catch (insertErr) {
+        if (insertErr.message && insertErr.message.includes("NOT NULL constraint failed")) {
+          // Se o schema do banco possui restrição NOT NULL em client_id / service_id
+          const fallbackClientId = 'cust-bloqueio-sistema';
+          await c.env.DB.prepare(
+            "INSERT OR IGNORE INTO customers (id, name, phone) VALUES (?, ?, ?)"
+          ).bind(fallbackClientId, 'Bloqueio de Agenda', '00000000000').run();
+
+          const fallbackServiceId = 'srv-corte';
+
+          await c.env.DB.prepare(`
+            INSERT INTO appointments (id, client_id, barber_id, service_id, appointment_time, status, cancellation_reason)
+            VALUES (?, ?, ?, ?, ?, 'cancelled', ?)
+          `).bind(apptId, fallbackClientId, barber_id, fallbackServiceId, slotTimeStr, cancelReason).run();
+        } else {
+          throw insertErr;
+        }
+      }
+
+      createdCount++;
+    }
+
+    return c.json({ success: true, count: createdCount });
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }
@@ -501,23 +882,56 @@ app.post('/api/appointments', authMiddleware, async (c) => {
     }
 
     // Verificar conflito de horário para o mesmo barbeiro (somente se a duração for > 0)
-    if (totalRequestedDuration > 0) {
-      const conflict = await c.env.DB.prepare(`
-        SELECT a.id 
-        FROM appointments a
-        LEFT JOIN services s_single ON a.service_id = s_single.id
-        WHERE a.barber_id = ? 
-          AND a.appointment_time = ? 
-          AND a.status = 'confirmed'
-          AND COALESCE(
-            (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
-            s_single.duration_minutes,
-            30
-          ) > 0
-      `).bind(barber_id, appointment_time).first();
+    if (totalRequestedDuration > 0 && appointment_time) {
+      const dateStr = appointment_time.split('T')[0];
+      const timeStr = appointment_time.split('T')[1] || "";
+      const [reqH, reqM] = timeStr.split(':').map(Number);
 
-      if (conflict) {
-        return c.json({ error: 'Este horário já está reservado com este barbeiro.' }, 400);
+      if (!isNaN(reqH) && !isNaN(reqM)) {
+        const newStartM = reqH * 60 + reqM;
+        const newEndM = newStartM + totalRequestedDuration;
+
+        const reqDateObj = new Date(dateStr + "T00:00:00");
+        const dayOfWeek = reqDateObj.getDay();
+        const closingHour = dayOfWeek === 6 ? 16 : 19;
+        if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
+          return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
+        }
+
+        const existingAppts = await c.env.DB.prepare(`
+          SELECT a.id, a.appointment_time, a.status,
+                 COALESCE(
+                   (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+                   s_single.duration_minutes,
+                   30
+                 ) as duration_minutes
+          FROM appointments a
+          LEFT JOIN services s_single ON a.service_id = s_single.id
+          WHERE (a.barber_id = ? OR a.barber_id IN (SELECT id FROM barbers WHERE user_id = ?) OR a.barber_id IN (SELECT user_id FROM barbers WHERE id = ?)) 
+            AND a.appointment_time LIKE ? 
+            AND (a.status != 'cancelled' OR a.cancellation_reason IS NOT NULL)
+        `).bind(barber_id, barber_id, barber_id, `${dateStr}%`).all();
+
+        if (existingAppts && existingAppts.results) {
+          for (const appt of existingAppts.results) {
+            const apptTimePart = appt.appointment_time.split('T')[1] || "";
+            const [appH, appM] = apptTimePart.split(':').map(Number);
+            if (isNaN(appH) || isNaN(appM)) continue;
+
+            const apptStartM = appH * 60 + appM;
+            const apptDuration = (appt.duration_minutes !== undefined && appt.duration_minutes !== null) ? Number(appt.duration_minutes) : 30;
+            if (apptDuration === 0) continue;
+
+            const apptEndM = apptStartM + apptDuration;
+
+            const overlapStart = Math.max(newStartM, apptStartM);
+            const overlapEnd = Math.min(newEndM, apptEndM);
+
+            if (overlapStart < overlapEnd) {
+              return c.json({ error: 'Este horário entra em conflito com outro agendamento existente para este profissional.' }, 400);
+            }
+          }
+        }
       }
     }
 
@@ -636,24 +1050,56 @@ app.post('/api/appointments/quick', async (c) => {
     }
 
     // 2. Verificar conflito de horário (somente se a duração for > 0)
-    if (totalRequestedDuration > 0) {
-      const conflict = await c.env.DB.prepare(`
-        SELECT a.id 
-        FROM appointments a
-        LEFT JOIN services s_single ON a.service_id = s_single.id
-        WHERE a.barber_id = ? 
-          AND a.appointment_time = ? 
-          AND a.status = 'confirmed' 
-          AND a.client_id != ?
-          AND COALESCE(
-            (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
-            s_single.duration_minutes,
-            30
-          ) > 0
-      `).bind(barber_id, appointment_time, clientId).first();
+    if (totalRequestedDuration > 0 && appointment_time) {
+      const dateStr = appointment_time.split('T')[0];
+      const timeStr = appointment_time.split('T')[1] || "";
+      const [reqH, reqM] = timeStr.split(':').map(Number);
 
-      if (conflict) {
-        return c.json({ error: 'Este horário já está reservado com este barbeiro.' }, 400);
+      if (!isNaN(reqH) && !isNaN(reqM)) {
+        const newStartM = reqH * 60 + reqM;
+        const newEndM = newStartM + totalRequestedDuration;
+
+        const reqDateObj = new Date(dateStr + "T00:00:00");
+        const dayOfWeek = reqDateObj.getDay();
+        const closingHour = dayOfWeek === 6 ? 16 : 19;
+        if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
+          return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
+        }
+
+        const existingAppts = await c.env.DB.prepare(`
+          SELECT a.id, a.appointment_time, a.status,
+                 COALESCE(
+                   (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+                   s_single.duration_minutes,
+                   30
+                 ) as duration_minutes
+          FROM appointments a
+          LEFT JOIN services s_single ON a.service_id = s_single.id
+          WHERE (a.barber_id = ? OR a.barber_id IN (SELECT id FROM barbers WHERE user_id = ?) OR a.barber_id IN (SELECT user_id FROM barbers WHERE id = ?)) 
+            AND a.appointment_time LIKE ? 
+            AND (a.status != 'cancelled' OR a.cancellation_reason IS NOT NULL)
+        `).bind(barber_id, barber_id, barber_id, `${dateStr}%`).all();
+
+        if (existingAppts && existingAppts.results) {
+          for (const appt of existingAppts.results) {
+            const apptTimePart = appt.appointment_time.split('T')[1] || "";
+            const [appH, appM] = apptTimePart.split(':').map(Number);
+            if (isNaN(appH) || isNaN(appM)) continue;
+
+            const apptStartM = appH * 60 + appM;
+            const apptDuration = (appt.duration_minutes !== undefined && appt.duration_minutes !== null) ? Number(appt.duration_minutes) : 30;
+            if (apptDuration === 0) continue;
+
+            const apptEndM = apptStartM + apptDuration;
+
+            const overlapStart = Math.max(newStartM, apptStartM);
+            const overlapEnd = Math.min(newEndM, apptEndM);
+
+            if (overlapStart < overlapEnd) {
+              return c.json({ error: 'Este horário entra em conflito com outro agendamento existente para este profissional.' }, 400);
+            }
+          }
+        }
       }
     }
 
@@ -806,6 +1252,35 @@ app.put('/api/appointments/:id', authMiddleware, async (c) => {
     if (name || phone) {
       await c.env.DB.prepare("UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?")
         .bind(name ? name.trim() : null, phone || null, existing.client_id).run();
+    }
+
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 8.2 Excluir Agendamento / Desfazer Bloqueio
+app.delete('/api/appointments/:id', authMiddleware, async (c) => {
+  const appointmentId = c.req.param('id');
+  try {
+    const existing = await c.env.DB.prepare("SELECT * FROM appointments WHERE id = ?").bind(appointmentId).first();
+    if (!existing) {
+      return c.json({ error: 'Agendamento/Bloqueio não encontrado.' }, 404);
+    }
+
+    if (existing.status === 'cancelled' && existing.cancellation_reason) {
+      const dateStr = existing.appointment_time.split('T')[0];
+      await c.env.DB.prepare(`
+        DELETE FROM appointments 
+        WHERE barber_id = ? 
+          AND status = 'cancelled' 
+          AND cancellation_reason = ? 
+          AND appointment_time LIKE ?
+      `).bind(existing.barber_id, existing.cancellation_reason, `${dateStr}%`).run();
+    } else {
+      await c.env.DB.prepare("DELETE FROM appointment_services WHERE appointment_id = ?").bind(appointmentId).run();
+      await c.env.DB.prepare("DELETE FROM appointments WHERE id = ?").bind(appointmentId).run();
     }
 
     return c.json({ success: true });
@@ -1376,6 +1851,253 @@ app.delete('/api/products/:id', authMiddleware, async (c) => {
     }
 
     await c.env.DB.prepare("DELETE FROM products WHERE id = ?").bind(id).run();
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// --- Módulo de Fluxo de Caixa (Caixa) ---
+
+async function syncCompletedAppointmentsToCaixa(db) {
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS caixa (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL CHECK(type IN ('receita', 'despesa')),
+        description TEXT NOT NULL,
+        amount REAL NOT NULL,
+        category TEXT NOT NULL,
+        appointment_id TEXT REFERENCES appointments(id) ON DELETE SET NULL,
+        barber_id TEXT REFERENCES barbers(id) ON DELETE SET NULL,
+        date TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+      )
+    `).run();
+
+    // Selecionar agendamentos passados ou concluídos que ainda não possuem lançamento no caixa
+    const { results: eligibleAppts } = await db.prepare(`
+      SELECT a.id, a.barber_id, a.appointment_time, a.status,
+             COALESCE(cust.name, u.name, 'Cliente') as client_name,
+             b.name as barber_name,
+             COALESCE(
+               (SELECT GROUP_CONCAT(s.name, ', ') FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+               s_single.name,
+               'Serviço'
+             ) as service_name,
+             COALESCE(
+               (SELECT SUM(s.price) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+               s_single.price,
+               0
+             ) as total_price
+      FROM appointments a
+      LEFT JOIN users u ON a.client_id = u.id
+      LEFT JOIN customers cust ON a.client_id = cust.id
+      LEFT JOIN barbers b ON a.barber_id = b.id
+      LEFT JOIN services s_single ON a.service_id = s_single.id
+      WHERE a.status != 'cancelled'
+        AND (
+          a.status = 'completed' OR 
+          REPLACE(a.appointment_time, 'T', ' ') <= datetime('now', 'localtime')
+        )
+        AND a.id NOT IN (SELECT appointment_id FROM caixa WHERE appointment_id IS NOT NULL)
+    `).all();
+
+    let syncedCount = 0;
+    if (eligibleAppts && eligibleAppts.length > 0) {
+      for (const appt of eligibleAppts) {
+        const id = 'cx-srv-' + appt.id;
+        const description = `Serviço: ${appt.service_name} - Cliente: ${appt.client_name}`;
+        const amount = Number(appt.total_price) || 0;
+        const dateStr = appt.appointment_time.replace('T', ' ');
+
+        await db.prepare(`
+          INSERT OR IGNORE INTO caixa (id, type, description, amount, category, appointment_id, barber_id, date)
+          VALUES (?, 'receita', ?, ?, 'Serviço', ?, ?, ?)
+        `).bind(id, description, amount, appt.id, appt.barber_id || null, dateStr).run();
+
+        syncedCount++;
+      }
+    }
+    return syncedCount;
+  } catch (e) {
+    console.error("Erro ao sincronizar agendamentos para caixa:", e);
+    return 0;
+  }
+}
+
+// 12. Listar Lançamentos do Caixa
+app.get('/api/caixa', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  try {
+    // Sincroniza agendamentos passados automaticamente
+    await syncCompletedAppointmentsToCaixa(c.env.DB);
+
+    const query = `
+      SELECT c.*, b.name as barber_name
+      FROM caixa c
+      LEFT JOIN barbers b ON c.barber_id = b.id
+      ORDER BY c.date DESC, c.created_at DESC
+    `;
+
+    const { results } = await c.env.DB.prepare(query).all();
+
+    let totalReceitas = 0;
+    let totalDespesas = 0;
+
+    (results || []).forEach(item => {
+      const val = Number(item.amount) || 0;
+      if (item.type === 'receita') {
+        totalReceitas += val;
+      } else if (item.type === 'despesa') {
+        totalDespesas += val;
+      }
+    });
+
+    const saldo = totalReceitas - totalDespesas;
+
+    return c.json({
+      transactions: results || [],
+      summary: {
+        total_receitas: totalReceitas,
+        total_despesas: totalDespesas,
+        saldo: saldo
+      }
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 12.1 Sincronizar Manualmente Agendamentos -> Caixa
+app.post('/api/caixa/sync', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  try {
+    const count = await syncCompletedAppointmentsToCaixa(c.env.DB);
+    return c.json({ success: true, synced_count: count });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 12.2 Criar Lançamento Manual no Caixa
+app.post('/api/caixa', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  try {
+    const { type, description, amount, category, date, barber_id } = await c.req.json();
+
+    if (!type || !['receita', 'despesa'].includes(type)) {
+      return c.json({ error: 'Tipo inválido. Deve ser receita ou despesa.' }, 400);
+    }
+    if (!description || !description.trim()) {
+      return c.json({ error: 'Descrição é obrigatória.' }, 400);
+    }
+    if (amount === undefined || amount === null || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return c.json({ error: 'Valor deve ser um número positivo.' }, 400);
+    }
+
+    const id = 'cx-man-' + crypto.randomUUID();
+    const formattedDate = date ? date.replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const categoryName = category && category.trim() ? category.trim() : (type === 'receita' ? 'Receita Avulsa' : 'Despesa Geral');
+
+    await c.env.DB.prepare(`
+      INSERT INTO caixa (id, type, description, amount, category, barber_id, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      type,
+      description.trim(),
+      Number(amount),
+      categoryName,
+      barber_id || null,
+      formattedDate
+    ).run();
+
+    return c.json({
+      success: true,
+      transaction: {
+        id,
+        type,
+        description: description.trim(),
+        amount: Number(amount),
+        category: categoryName,
+        barber_id: barber_id || null,
+        date: formattedDate
+      }
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 12.3 Editar Lançamento do Caixa
+app.put('/api/caixa/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    const { type, description, amount, category, date, barber_id } = await c.req.json();
+
+    const existing = await c.env.DB.prepare("SELECT id FROM caixa WHERE id = ?").bind(id).first();
+    if (!existing) {
+      return c.json({ error: 'Lançamento não encontrado.' }, 404);
+    }
+
+    if (type && !['receita', 'despesa'].includes(type)) {
+      return c.json({ error: 'Tipo inválido.' }, 400);
+    }
+    if (!description || !description.trim()) {
+      return c.json({ error: 'Descrição é obrigatória.' }, 400);
+    }
+
+    const formattedDate = date ? date.replace('T', ' ') : undefined;
+
+    await c.env.DB.prepare(`
+      UPDATE caixa
+      SET type = ?, description = ?, amount = ?, category = ?, barber_id = ?, date = COALESCE(?, date), updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).bind(
+      type,
+      description.trim(),
+      Number(amount),
+      category ? category.trim() : 'Geral',
+      barber_id || null,
+      formattedDate || null,
+      id
+    ).run();
+
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 12.4 Excluir Lançamento do Caixa
+app.delete('/api/caixa/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const id = c.req.param('id');
+  try {
+    await c.env.DB.prepare("DELETE FROM caixa WHERE id = ?").bind(id).run();
     return c.json({ success: true });
   } catch (e) {
     return c.json({ error: e.message }, 500);

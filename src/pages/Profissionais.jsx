@@ -9,6 +9,7 @@ export default function Profissionais() {
   const navigate = useNavigate()
 
   const [barbers, setBarbers] = useState([])
+  const [systemUsers, setSystemUsers] = useState([])
   const [isBarberModalOpen, setIsBarberModalOpen] = useState(false)
   const [editingBarberId, setEditingBarberId] = useState(null)
   const [barberName, setBarberName] = useState("")
@@ -19,6 +20,7 @@ export default function Profissionais() {
   const [barberHiredAt, setBarberHiredAt] = useState("")
   const [barberServiceCommission, setBarberServiceCommission] = useState(0)
   const [barberProductCommission, setBarberProductCommission] = useState(0)
+  const [barberUserId, setBarberUserId] = useState("")
   const [barberSubmitting, setBarberSubmitting] = useState(false)
   const [barberError, setBarberError] = useState("")
   const [barberSuccess, setBarberSuccess] = useState("")
@@ -36,26 +38,28 @@ export default function Profissionais() {
       return
     }
 
-    async function loadBarbers() {
+    async function loadData() {
       try {
-        const res = await fetch(`${API_URL}/api/barbers`)
-        if (res.ok) {
-          const data = await res.json()
+        const [barbRes, usersRes] = await Promise.all([
+          fetch(`${API_URL}/api/barbers`),
+          token ? fetch(`${API_URL}/api/users`, { headers: { Authorization: `Bearer ${token}` } }) : null
+        ])
+
+        if (barbRes && barbRes.ok) {
+          const data = await barbRes.json()
           setBarbers(data)
-        } else {
-          setBarbers([
-            { id: "barb-marcio", name: "MARCIO DO VALE", phone: "(34) 99868-4036" },
-            { id: "barb-lucas", name: "LUCAS DO VALE", phone: "(34) 99868-4036" },
-            { id: "barb-paulo", name: "PAULO TILLMANN", phone: "(34) 99868-4036" }
-          ])
+        }
+        if (usersRes && usersRes.ok) {
+          const uData = await usersRes.json()
+          setSystemUsers(uData)
         }
       } catch (err) {
-        console.error("Erro ao carregar barbeiros:", err)
+        console.error("Erro ao carregar dados dos profissionais:", err)
       }
     }
 
-    loadBarbers()
-  }, [user, navigate])
+    loadData()
+  }, [user, token, navigate])
 
   const showConfirm = (title, message, onConfirm) => {
     setConfirmModal({
@@ -88,6 +92,7 @@ export default function Profissionais() {
     setBarberHiredAt("")
     setBarberServiceCommission(0)
     setBarberProductCommission(0)
+    setBarberUserId("")
   }
 
   const handleEditBarberClick = (barb) => {
@@ -100,6 +105,7 @@ export default function Profissionais() {
     setBarberHiredAt(barb.hired_at || "")
     setBarberServiceCommission(barb.service_commission ?? 0)
     setBarberProductCommission(barb.product_commission ?? 0)
+    setBarberUserId(barb.user_id || "")
     setIsBarberModalOpen(true)
   }
 
@@ -188,7 +194,8 @@ export default function Profissionais() {
       specialty: barberSpecialty.trim(),
       hired_at: barberHiredAt.trim(),
       service_commission: Number(barberServiceCommission) || 0,
-      product_commission: Number(barberProductCommission) || 0
+      product_commission: Number(barberProductCommission) || 0,
+      user_id: barberUserId.trim() || null
     }
 
     try {
@@ -267,7 +274,7 @@ export default function Profissionais() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 pr-[40px] pl-4 md:pl-8 relative lg:pl-[274px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -277,8 +284,8 @@ export default function Profissionais() {
       {/* Sidebar de Navegação */}
       <Sidebar />
 
-      <div className="container mx-auto max-w-5xl relative z-10 animate-fade-in">
-        <div className="space-y-6">
+      <div className="w-full relative z-10 animate-fade-in">
+        <div className="space-y-6 mt-[40px]">
           {barberSuccess && (
             <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 shadow-sm animate-fade-in">
               <CheckCircle2 size={18} className="shrink-0" />
@@ -296,8 +303,8 @@ export default function Profissionais() {
           <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 md:p-8 shadow-elevated">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
               <div>
-                <h2 className="text-xl font-bold font-display mb-2 flex items-center gap-2">
-                  <User className="text-primary w-5 h-5" /> Profissionais
+                <h2 className="text-[18pt] font-bold font-display mb-2 flex items-center gap-2">
+                  <User className="text-primary w-6 h-6" /> Profissionais
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   Profissionais qualificados com ampla experiência no mercado, prontos para entregar o melhor visual para você.
@@ -329,10 +336,10 @@ export default function Profissionais() {
                     <div className="relative w-28 h-28 rounded-full overflow-hidden border-2 border-border/80 group-hover:border-primary/50 transition-colors duration-300 shadow-md mb-4 bg-background">
                       <img src={photo} alt={barb.name} className="w-full h-full object-cover object-top scale-102 group-hover:scale-108 transition-transform duration-500" />
                     </div>
-                    <h4 className="font-bold text-sm uppercase tracking-wide text-foreground mt-2">{barb.name}</h4>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-primary mt-1">{barb.specialty || "Especialista Do Vale"}</span>
+                    <h4 className="font-bold text-[12pt] uppercase tracking-wide text-foreground mt-2">{barb.name}</h4>
+                    <span className="text-[10pt] font-bold uppercase tracking-widest text-primary mt-1">{barb.specialty || "Especialista Do Vale"}</span>
                     
-                    <div className="space-y-1.5 text-left w-full text-xs text-muted-foreground border-t border-border/40 pt-4 mt-4 flex-1">
+                    <div className="space-y-1.5 text-left w-full text-[10pt] text-muted-foreground border-t border-border/40 pt-4 mt-4 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-foreground/80">WhatsApp:</span>
                         <a 
@@ -352,14 +359,22 @@ export default function Profissionais() {
                       )}
                       {user.role === 'admin' && (
                         <div className="border-t border-border/30 pt-2 mt-2 space-y-1">
-                          <div className="flex justify-between items-center text-[11px]">
+                          <div className="flex justify-between items-center text-[10pt]">
                             <span className="font-semibold text-foreground/80">Comissão Serviços:</span>
                             <span className="font-bold text-primary">{barb.service_commission ?? 0}%</span>
                           </div>
-                          <div className="flex justify-between items-center text-[11px]">
+                          <div className="flex justify-between items-center text-[10pt]">
                             <span className="font-semibold text-foreground/80">Comissão Produtos:</span>
                             <span className="font-bold text-primary">{barb.product_commission ?? 0}%</span>
                           </div>
+                          {barb.user_id && (
+                            <div className="flex justify-between items-center text-[10pt] pt-1 border-t border-border/20">
+                              <span className="font-semibold text-foreground/80">Usuário Vinculado:</span>
+                              <span className="font-bold text-primary truncate max-w-[130px]">
+                                {systemUsers.find(u => u.id === barb.user_id)?.name || "Vinculado"}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -526,6 +541,24 @@ export default function Profissionais() {
                     placeholder="Ex: 10"
                     className="w-full bg-background border border-border focus:border-primary rounded-xl py-3 px-4 text-sm text-foreground focus:outline-none transition-all font-mono"
                   />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                    Usuário Vinculado (Login do Sistema)
+                  </label>
+                  <select
+                    value={barberUserId}
+                    onChange={(e) => setBarberUserId(e.target.value)}
+                    className="w-full bg-background border border-border focus:border-primary rounded-xl py-3 px-4 text-sm text-foreground focus:outline-none transition-all cursor-pointer"
+                  >
+                    <option value="">-- Nenhum Usuário Vinculado --</option>
+                    {systemUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.role === 'barber' ? 'Barbeiro' : u.role === 'secretario' ? 'Secretário(a)' : u.role === 'admin' ? 'Admin' : u.role}) {u.phone ? `- ${u.phone}` : u.email ? `- ${u.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1 sm:col-span-2">

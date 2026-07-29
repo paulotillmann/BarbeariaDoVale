@@ -289,7 +289,7 @@ export default function Clientes() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 px-4 md:px-8 relative lg:pl-[280px] sidebar-page-container flex flex-col justify-start">
+    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 pr-[40px] pl-4 md:pl-8 relative lg:pl-[274px] sidebar-page-container flex flex-col justify-start">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
@@ -299,15 +299,15 @@ export default function Clientes() {
       {/* Sidebar de Navegação */}
       <Sidebar />
 
-      <div className="container mx-auto max-w-5xl relative z-10 animate-fade-in">
-        <div className="space-y-6">
+      <div className="w-full relative z-10 animate-fade-in">
+        <div className="space-y-6 mt-[40px]">
           {(user.role === "admin" || user.role === "barber") ? (
             <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 md:p-8 shadow-elevated relative overflow-hidden">
               
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-border/80 pb-6">
                 <div>
-                  <h2 className="text-xl font-bold font-display flex items-center gap-2.5">
-                    <Users className="text-primary w-5 h-5" /> Clientes
+                  <h2 className="text-[18pt] font-bold font-display flex items-center gap-2.5">
+                    <Users className="text-primary w-6 h-6" /> Clientes
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1">
                     Gerenciamento completo das fichas cadastrais de clientes da barbearia.
@@ -368,7 +368,7 @@ export default function Clientes() {
                       <p className="text-xs mt-1 text-muted-foreground/60">Clique em "Novo Cliente" para adicionar.</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
                       {customerList
                         .filter(c => 
                           (c.name && c.name.toLowerCase().includes(customerFilter.toLowerCase())) ||
@@ -386,12 +386,12 @@ export default function Clientes() {
                                   )}
                                 </div>
                                 <div>
-                                  <h4 className="font-bold text-sm tracking-wide text-foreground leading-snug">{c.name}</h4>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5">Cadastrado em {formatDateTime(c.created_at || new Date().toISOString())}</p>
+                                  <h4 className="font-bold text-[12pt] tracking-wide text-foreground leading-snug">{c.name}</h4>
+                                  <p className="text-[10pt] text-muted-foreground mt-0.5">Cadastrado em {formatDateTime(c.created_at || new Date().toISOString())}</p>
                                 </div>
                               </div>
 
-                              <div className="space-y-2 text-xs text-muted-foreground border-t border-border/40 pt-3">
+                              <div className="space-y-2 text-[12pt] text-muted-foreground border-t border-border/40 pt-3">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-foreground/80">Celular:</span>
                                   <a 

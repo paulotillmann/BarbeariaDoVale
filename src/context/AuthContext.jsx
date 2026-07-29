@@ -64,7 +64,7 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
-  const register = async (name, phone, email, password, role = "client") => {
+  const register = async (name, phone, email, password, role = "secretario") => {
     const response = await fetch(`${API_URL}/api/auth/register`, {
       method: "POST",
       headers: {
@@ -90,8 +90,18 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  const updateUserSession = (newUser, newToken) => {
+    if (newToken) {
+      localStorage.setItem("token", newToken)
+      setToken(newToken)
+    }
+    if (newUser) {
+      setUser(newUser)
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateUserSession }}>
       {children}
     </AuthContext.Provider>
   )

@@ -19,40 +19,43 @@ import {
 } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
-// Produtos de demonstração padronizados (fallback)
+// Produtos de demonstração padronizados (fallback com fotos em ambiente de barbearia)
 const INITIAL_DEFAULT_PRODUCTS = [
   {
-    id: "prod-pomada-mate",
-    name: "Pomada Modeladora Effect Mate 100g",
-    description: "Efeito fosco, alta fixação e fragrância amadeirada exclusiva Do Vale.",
-    supplier: "Barber Supply Brasil",
-    supplier_contact_name: "Carlos Eduardo",
-    supplier_contact_phone: "(34) 99888-7766",
-    cost_price: 22.50,
-    sale_price: 45.00,
-    stock_quantity: 12
-  },
-  {
-    id: "prod-oleo-barba",
-    name: "Óleo Hidratante para Barba 30ml",
-    description: "Enriquecido com óleo de argan e jojoba para hidratação e brilho natural.",
-    supplier: "Cosméticos Vale Gold",
-    supplier_contact_name: "Mariana Souza",
-    supplier_contact_phone: "(34) 99777-5544",
-    cost_price: 18.00,
-    sale_price: 38.00,
-    stock_quantity: 8
-  },
-  {
-    id: "prod-shampoo-barba",
-    name: "Shampoo 2 em 1 Cabelo e Barba 250ml",
-    description: "Limpeza profunda sem ressecar a pele e os fios com mentol refrescante.",
+    id: "prod-pomada-modeladora-dovale",
+    name: "Pomada Modeladora Do Vale Effect Matte 100g",
+    description: "Pomada modeladora capilar com efeito fosco e fixação forte durante todo o dia. Fragrância amadeirada exclusiva.",
     supplier: "Barber Supply Brasil",
     supplier_contact_name: "Carlos Eduardo",
     supplier_contact_phone: "(34) 99888-7766",
     cost_price: 25.00,
-    sale_price: 52.00,
-    stock_quantity: 2
+    sale_price: 55.00,
+    stock_quantity: 20,
+    photo: "/assets/pomada_modeladora_barbearia.png"
+  },
+  {
+    id: "prod-oleo-hidratante-dovale",
+    name: "Óleo Hidratante para Barba Do Vale 60ml",
+    description: "Óleo enriquecido com Argan e Jojoba para nutrição profunda, maciez e brilho natural dos fios da barba.",
+    supplier: "Cosméticos Vale Gold",
+    supplier_contact_name: "Mariana Souza",
+    supplier_contact_phone: "(34) 99777-5544",
+    cost_price: 20.00,
+    sale_price: 45.00,
+    stock_quantity: 15,
+    photo: "/assets/oleo_barba_barbearia.png"
+  },
+  {
+    id: "prod-baboon-matte-clay",
+    name: "Pomada Baboon Matte Clay 80g",
+    description: "Pomada modeladora de efeito fosco natural e alta fixação. Ideal para penteados estruturados com acabamento opaco.",
+    supplier: "Baboon Cosmetics",
+    supplier_contact_name: "Eduardo Baboon",
+    supplier_contact_phone: "(34) 99888-1122",
+    cost_price: 30.00,
+    sale_price: 65.00,
+    stock_quantity: 18,
+    photo: "/assets/prod_baboon_pomada.png"
   }
 ]
 
@@ -81,6 +84,7 @@ export default function Produtos() {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [successMsg, setSuccessMsg] = useState("")
+  const [previewImageModal, setPreviewImageModal] = useState(null)
 
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
@@ -373,11 +377,11 @@ export default function Produtos() {
   const canManage = !user || user.role === 'admin' || user.role === 'barber'
 
   return (
-    <div className={`min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 px-4 md:px-8 relative ${user ? 'lg:pl-[280px] sidebar-page-container' : ''} flex flex-col justify-start`}>
+    <div className={`min-h-screen bg-transparent text-foreground pt-24 pb-28 lg:pt-8 lg:pb-12 pr-[40px] pl-4 md:pl-8 relative ${user ? 'lg:pl-[274px] sidebar-page-container' : ''} flex flex-col justify-start`}>
       {user && <Sidebar />}
 
-      <div className="container mx-auto max-w-5xl relative z-10 animate-fade-in">
-        <div className="space-y-6">
+      <div className="w-full relative z-10 animate-fade-in">
+        <div className="space-y-6 mt-[40px]">
           {/* Alertas Globais */}
           {successMsg && (
             <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 shadow-sm animate-fade-in">
@@ -448,8 +452,8 @@ export default function Produtos() {
             {/* Cabeçalho e Ações */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
               <div>
-                <h2 className="text-xl font-bold font-display mb-1 flex items-center gap-2">
-                  <Package className="text-primary w-5 h-5" /> Controle de Estoque & Produtos
+                <h2 className="text-[18pt] font-bold font-display mb-1 flex items-center gap-2">
+                  <Package className="text-primary w-6 h-6" /> Controle de Estoque & Produtos
                 </h2>
                 <p className="text-xs text-muted-foreground">
                   Gerencie o catálogo de produtos da barbearia, fornecedores, custos, preços de venda e estoque.
@@ -519,7 +523,7 @@ export default function Produtos() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
                 {filteredProducts.map((prod) => {
                   const stockQty = Number(prod.stock_quantity) || 0
                   const isStockLow = stockQty <= 3
@@ -539,11 +543,21 @@ export default function Produtos() {
                         {/* Header do Card com Foto, Badge de Estoque e Nome */}
                         <div className="flex items-start gap-3 mb-3">
                           <div className="flex flex-col items-center gap-1.5 shrink-0">
-                            <div className="w-[52px] h-[52px] bg-background border border-border/60 rounded-xl overflow-hidden flex items-center justify-center text-primary group-hover:scale-105 transition-transform duration-300">
+                            <div 
+                              onClick={() => {
+                                if (prod.photo) {
+                                  setPreviewImageModal({ url: prod.photo, title: prod.name })
+                                }
+                              }}
+                              className={`w-[102px] h-[102px] bg-background border border-border/60 rounded-xl overflow-hidden flex items-center justify-center text-primary group-hover:scale-105 transition-transform duration-300 ${
+                                prod.photo ? "cursor-pointer hover:ring-2 hover:ring-primary/60" : ""
+                              }`}
+                              title={prod.photo ? "Clique para visualizar em tamanho original" : ""}
+                            >
                               {prod.photo ? (
                                 <img src={prod.photo} alt={prod.name} className="w-full h-full object-cover" />
                               ) : (
-                                <Package size={20} />
+                                <Package size={36} />
                               )}
                             </div>
                             {/* Badge de Estoque */}
@@ -902,6 +916,40 @@ export default function Produtos() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL DE VISUALIZAÇÃO DA FOTO DO PRODUTO EM TAMANHO ORIGINAL */}
+      {previewImageModal && (
+        <div 
+          onClick={() => setPreviewImageModal(null)}
+          className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#1c1c20]/95 backdrop-blur-xl max-w-4xl max-h-[90vh] border border-primary/30 rounded-2xl p-4 md:p-6 shadow-2xl relative animate-scale-in flex flex-col items-center cursor-default"
+          >
+            <div className="flex items-center justify-between w-full mb-4 pb-3 border-b border-border/50">
+              <h3 className="text-base font-bold font-display text-primary truncate pr-4">
+                {previewImageModal.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewImageModal(null)}
+                className="text-muted-foreground hover:text-foreground p-1.5 rounded-xl hover:bg-muted transition-colors cursor-pointer shrink-0"
+                title="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="overflow-auto flex items-center justify-center max-h-[75vh] w-full rounded-xl bg-black/60 p-2 border border-border/40">
+              <img
+                src={previewImageModal.url}
+                alt={previewImageModal.title}
+                className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-xl"
+              />
+            </div>
           </div>
         </div>
       )}
