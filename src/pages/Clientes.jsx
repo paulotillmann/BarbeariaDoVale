@@ -206,8 +206,8 @@ export default function Clientes() {
     setCustomerSuccess("")
 
     const payload = {
-      name: customerName.trim(),
-      address: customerAddress.trim(),
+      name: customerName.trim().toUpperCase(),
+      address: customerAddress.trim().toUpperCase(),
       phone: customerPhone.trim(),
       birth_date: customerBirthDate.trim(),
       photo: customerPhoto.trim()

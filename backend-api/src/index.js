@@ -664,7 +664,7 @@ app.get('/api/appointments', authMiddleware, async (c) => {
 
     try {
       await c.env.DB.prepare(
-        "INSERT OR IGNORE INTO customers (id, name, phone) VALUES ('cust-bloqueio-sistema', 'Bloqueio de Agenda', '00000000000')"
+        "INSERT OR IGNORE INTO customers (id, name, phone) VALUES ('cust-bloqueio-sistema', 'BLOQUEIO DE AGENDA', '00000000000')"
       ).run();
       await c.env.DB.prepare(
         "UPDATE appointments SET client_id = 'cust-bloqueio-sistema' WHERE status = 'cancelled' AND cancellation_reason IS NOT NULL AND (client_id IS NULL OR client_id != 'cust-bloqueio-sistema')"
@@ -801,7 +801,7 @@ app.post('/api/appointments/cancel-range', authMiddleware, async (c) => {
           const fallbackClientId = 'cust-bloqueio-sistema';
           await c.env.DB.prepare(
             "INSERT OR IGNORE INTO customers (id, name, phone) VALUES (?, ?, ?)"
-          ).bind(fallbackClientId, 'Bloqueio de Agenda', '00000000000').run();
+          ).bind(fallbackClientId, 'BLOQUEIO DE AGENDA', '00000000000').run();
 
           const fallbackServiceId = 'srv-corte';
 
@@ -856,14 +856,14 @@ app.post('/api/appointments', authMiddleware, async (c) => {
       if (name || phone) {
         await c.env.DB.prepare(
           "UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?"
-        ).bind(name ? name.trim() : null, phone || null, clientId).run();
+        ).bind(name ? name.trim().toUpperCase() : null, phone || null, clientId).run();
       }
     } else {
       // Criar novo cliente estritamente na tabela 'customers' (SEM mexer em 'users')
       clientId = crypto.randomUUID();
       await c.env.DB.prepare(
         "INSERT INTO customers (id, name, phone) VALUES (?, ?, ?)"
-      ).bind(clientId, name ? name.trim() : 'Cliente Sem Nome', phone || null).run();
+      ).bind(clientId, name ? name.trim().toUpperCase() : 'CLIENTE SEM NOME', phone || null).run();
     }
 
     // Processar serviços
@@ -893,7 +893,7 @@ app.post('/api/appointments', authMiddleware, async (c) => {
 
         const reqDateObj = new Date(dateStr + "T00:00:00");
         const dayOfWeek = reqDateObj.getDay();
-        const closingHour = dayOfWeek === 6 ? 16 : 19;
+        const closingHour = 20;
         if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
           return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
         }
@@ -1027,12 +1027,12 @@ app.post('/api/appointments/quick', async (c) => {
 
     if (existingCust) {
       clientId = existingCust.id;
-      await c.env.DB.prepare("UPDATE customers SET name = ?, phone = ? WHERE id = ?").bind(name.trim(), phone, clientId).run();
+      await c.env.DB.prepare("UPDATE customers SET name = ?, phone = ? WHERE id = ?").bind(name.trim().toUpperCase(), phone, clientId).run();
     } else {
       clientId = crypto.randomUUID();
       await c.env.DB.prepare(
         "INSERT INTO customers (id, name, phone) VALUES (?, ?, ?)"
-      ).bind(clientId, name.trim(), phone).run();
+      ).bind(clientId, name.trim().toUpperCase(), phone).run();
     }
 
     // 3. Processar múltiplos serviços
@@ -1061,7 +1061,7 @@ app.post('/api/appointments/quick', async (c) => {
 
         const reqDateObj = new Date(dateStr + "T00:00:00");
         const dayOfWeek = reqDateObj.getDay();
-        const closingHour = dayOfWeek === 6 ? 16 : 19;
+        const closingHour = 20;
         if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
           return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
         }
@@ -1121,7 +1121,10 @@ app.post('/api/appointments/quick', async (c) => {
       createdIds.push(appointmentId);
     }
 
-    const barber = await c.env.DB.prepare("SELECT name, phone FROM users WHERE id = ?").bind(barber_id).first();
+    let barber = await c.env.DB.prepare("SELECT name, phone FROM barbers WHERE id = ? OR user_id = ?").bind(barber_id, barber_id).first();
+    if (!barber) {
+      barber = await c.env.DB.prepare("SELECT name, phone FROM users WHERE id = ?").bind(barber_id).first();
+    }
 
     const servicesText = serviceNames.length > 0 ? serviceNames.join(", ") : "";
 
@@ -1251,7 +1254,7 @@ app.put('/api/appointments/:id', authMiddleware, async (c) => {
 
     if (name || phone) {
       await c.env.DB.prepare("UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?")
-        .bind(name ? name.trim() : null, phone || null, existing.client_id).run();
+        .bind(name ? name.trim().toUpperCase() : null, phone || null, existing.client_id).run();
     }
 
     return c.json({ success: true });
@@ -1486,7 +1489,9 @@ app.post('/api/customers', authMiddleware, async (c) => {
     return c.json({ error: 'Os campos nome e celular são obrigatórios.' }, 400);
   }
 
-  const cleanAddress = address || null;
+  const upperName = name.trim().toUpperCase();
+  const upperAddress = address ? address.trim().toUpperCase() : null;
+  const cleanPhone = phone.trim();
   const cleanBirthDate = birth_date || null;
   const cleanPhoto = photo || null;
 
@@ -1494,9 +1499,9 @@ app.post('/api/customers', authMiddleware, async (c) => {
   try {
     await c.env.DB.prepare(
       "INSERT INTO customers (id, name, address, phone, birth_date, photo) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(id, name, cleanAddress, phone, cleanBirthDate, cleanPhoto).run();
+    ).bind(id, upperName, upperAddress, cleanPhone, cleanBirthDate, cleanPhoto).run();
 
-    return c.json({ success: true, customer: { id, name, address: cleanAddress, phone, birth_date: cleanBirthDate, photo: cleanPhoto } });
+    return c.json({ success: true, customer: { id, name: upperName, address: upperAddress, phone: cleanPhone, birth_date: cleanBirthDate, photo: cleanPhoto } });
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }
@@ -1515,7 +1520,9 @@ app.put('/api/customers/:id', authMiddleware, async (c) => {
     return c.json({ error: 'Os campos nome e celular são obrigatórios.' }, 400);
   }
 
-  const cleanAddress = address || null;
+  const upperName = name.trim().toUpperCase();
+  const upperAddress = address ? address.trim().toUpperCase() : null;
+  const cleanPhone = phone.trim();
   const cleanBirthDate = birth_date || null;
   const cleanPhoto = photo || null;
 
@@ -1527,9 +1534,9 @@ app.put('/api/customers/:id', authMiddleware, async (c) => {
 
     await c.env.DB.prepare(
       "UPDATE customers SET name = ?, address = ?, phone = ?, birth_date = ?, photo = ? WHERE id = ?"
-    ).bind(name, cleanAddress, phone, cleanBirthDate, cleanPhoto, id).run();
+    ).bind(upperName, upperAddress, cleanPhone, cleanBirthDate, cleanPhoto, id).run();
 
-    return c.json({ success: true, customer: { id, name, address: cleanAddress, phone, birth_date: cleanBirthDate, photo: cleanPhoto } });
+    return c.json({ success: true, customer: { id, name: upperName, address: upperAddress, phone: cleanPhone, birth_date: cleanBirthDate, photo: cleanPhoto } });
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }

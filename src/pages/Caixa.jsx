@@ -46,6 +46,13 @@ function formatDateBR(dateTimeStr) {
   return dateTimeStr
 }
 
+function formatCurrency(val) {
+  return (Number(val) || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  })
+}
+
 export default function Caixa() {
   const { user, token } = useAuth()
   const navigate = useNavigate()
@@ -500,7 +507,7 @@ export default function Caixa() {
                 </div>
               </div>
               <div className="font-display font-black text-2xl text-green-400">
-                R$ {filteredSummary.total_receitas.toFixed(2).replace('.', ',')}
+                {formatCurrency(filteredSummary.total_receitas)}
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">
                 Entradas de serviços e vendas
@@ -518,7 +525,7 @@ export default function Caixa() {
                 </div>
               </div>
               <div className="font-display font-black text-2xl text-rose-400">
-                R$ {filteredSummary.total_despesas.toFixed(2).replace('.', ',')}
+                {formatCurrency(filteredSummary.total_despesas)}
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">
                 Saídas operacionais e custos
@@ -540,7 +547,9 @@ export default function Caixa() {
               <div className={`font-display font-black text-2xl ${
                 filteredSummary.saldo >= 0 ? "text-primary" : "text-rose-400"
               }`}>
-                R$ {filteredSummary.saldo.toFixed(2).replace('.', ',')}
+                {filteredSummary.saldo < 0
+                  ? `- ${formatCurrency(Math.abs(filteredSummary.saldo))}`
+                  : formatCurrency(filteredSummary.saldo)}
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">
                 Balanço final do período
@@ -865,7 +874,7 @@ export default function Caixa() {
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-sm whitespace-nowrap">
                           <span className={isReceita ? "text-green-400" : "text-rose-400"}>
                             {isReceita ? "+ " : "- "}
-                            R$ {(Number(t.amount) || 0).toFixed(2).replace(".", ",")}
+                            {formatCurrency(Math.abs(Number(t.amount) || 0))}
                           </span>
                         </td>
 

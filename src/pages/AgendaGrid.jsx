@@ -720,7 +720,7 @@ export default function AgendaGrid() {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          name: newCustomerName.trim(),
+          name: newCustomerName.trim().toUpperCase(),
           phone: newCustomerPhone.trim()
         })
       })
@@ -747,7 +747,7 @@ export default function AgendaGrid() {
     <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-transparent text-foreground pt-24 pb-28 lg:pt-0 lg:pb-0 px-2 md:px-4 relative lg:pl-[260px] sidebar-page-container flex flex-col justify-center">
       <Sidebar />
 
-      <div className="container mx-auto px-1 max-w-[1232px] lg:h-[calc(100vh-100px)] relative z-10 animate-scale-in flex flex-col gap-4 justify-between">
+      <div className="container mx-auto px-4 max-w-[1312px] lg:h-[calc(100vh-100px)] relative z-10 animate-scale-in flex flex-col gap-4 justify-between">
         {/* Cabeçalho da Tela com Seletor de Data */}
         <div className="bg-card/45 backdrop-blur-md border border-border/80 rounded-3xl p-6 shadow-elevated flex flex-col md:flex-row items-center justify-between gap-4 relative z-30">
           <div>

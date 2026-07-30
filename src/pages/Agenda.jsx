@@ -321,7 +321,7 @@ export default function Agenda() {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          name: newCustomerName.trim(),
+          name: newCustomerName.trim().toUpperCase(),
           phone: newCustomerPhone.trim()
         })
       })

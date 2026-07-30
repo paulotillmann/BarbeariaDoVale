@@ -32,6 +32,7 @@ export default function Agendar() {
   const [loading, setLoading] = useState(true)
   const [submitLoading, setSubmitLoading] = useState(false)
   const [error, setError] = useState("")
+  const [slotWarning, setSlotWarning] = useState("")
   const [successMsg, setSuccessMsg] = useState("")
 
   // Inicializar nome e telefone com dados do usuário logado se houver
@@ -130,11 +131,11 @@ export default function Agendar() {
     const date = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
     const dayOfWeek = date.getDay() // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
 
-    if (dayOfWeek === 0) return [] // Domingo
+    if (dayOfWeek === 0) return [] // Domingo fechado
 
     const slots = []
-    let startHour = 9
-    let endHour = dayOfWeek === 6 ? 16 : 19 // Sábado até 16:00, Seg-Sex até 19:00
+    const startHour = 9
+    const endHour = 20 // Horários das 09:00 às 20:00
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -172,13 +173,13 @@ export default function Agendar() {
     const requestedDuration = selectedServices.length > 0 ? totalDurationMinutes : 30
     const slotEndMinutes = slotStartMinutes + requestedDuration
 
-    // Verificar se ultrapassa o horário de funcionamento da barbearia
+    // Verificar se ultrapassa o horário de funcionamento da barbearia (20:00)
     const dateParts = dateString.split("-")
     if (dateParts.length === 3) {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 16 : 19
+      const closingHour = 20
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }
@@ -217,11 +218,79 @@ export default function Agendar() {
     })
   }
 
+  // Avaliar e retornar o motivo exato pelo qual um horário não pode ser agendado devido à duração dos serviços ou conflitos
+  const getTimeSlotStatusReason = (dateString, timeString, targetBarberId = selectedBarber) => {
+    if (!targetBarberId || !dateString || !timeString) return null
+
+    const barbObj = barbers.find(b => String(b.id) === String(targetBarberId))
+    const barbName = barbObj ? barbObj.name : null
+
+    const [slotH, slotM] = timeString.split(':').map(Number)
+    if (isNaN(slotH) || isNaN(slotM)) return null
+
+    const slotStartMinutes = slotH * 60 + slotM
+    const requestedDuration = selectedServices.length > 0 ? totalDurationMinutes : 30
+    const slotEndMinutes = slotStartMinutes + requestedDuration
+
+    // 1. Verificar se ultrapassa o horário de funcionamento (20:00)
+    const closingMinutes = 20 * 60
+    if (slotEndMinutes > closingMinutes) {
+      const endH = String(Math.floor(slotEndMinutes / 60)).padStart(2, '0')
+      const endM = String(slotEndMinutes % 60).padStart(2, '0')
+      return `O(s) serviço(s) selecionado(s) possuem duração total de ${requestedDuration} min. Iniciando às ${timeString}, o atendimento terminaria às ${endH}:${endM}, ultrapassando o horário de encerramento das 20:00.`
+    }
+
+    // 2. Verificar conflitos com agendamentos ou bloqueios existentes
+    for (const appt of appointments) {
+      if (appt.status === 'cancelled' && !appt.cancellation_reason) continue
+      if (!appt.appointment_time || !appt.appointment_time.startsWith(dateString)) continue
+
+      const matchesBarberId = appt.barber_id && String(appt.barber_id) === String(targetBarberId)
+      const matchesBarberName = barbName && appt.barber_name && appt.barber_name.toLowerCase() === barbName.toLowerCase()
+      if (!matchesBarberId && !matchesBarberName) continue
+
+      const timePart = appt.appointment_time.split('T')[1] || ""
+      const [apptH, apptM] = timePart.split(':').map(Number)
+      if (isNaN(apptH) || isNaN(apptM)) continue
+
+      const apptStartMinutes = apptH * 60 + apptM
+      const apptDuration = (appt.duration_minutes !== undefined && appt.duration_minutes !== null) ? Number(appt.duration_minutes) : 30
+      if (apptDuration === 0) continue
+
+      const apptEndMinutes = apptStartMinutes + apptDuration
+
+      const overlapStart = Math.max(slotStartMinutes, apptStartMinutes)
+      const overlapEnd = Math.min(slotEndMinutes, apptEndMinutes)
+
+      if (overlapStart < overlapEnd) {
+        const apptStartH = String(Math.floor(apptStartMinutes / 60)).padStart(2, '0')
+        const apptStartMStr = String(apptStartMinutes % 60).padStart(2, '0')
+        const apptEndH = String(Math.floor(apptEndMinutes / 60)).padStart(2, '0')
+        const apptEndMStr = String(apptEndMinutes % 60).padStart(2, '0')
+
+        if (slotStartMinutes === apptStartMinutes) {
+          if (appt.cancellation_reason) {
+            return `Horário bloqueado na agenda do profissional (${appt.cancellation_reason}).`
+          }
+          return `Este profissional já possui um agendamento reservado às ${timeString}.`
+        }
+
+        return `A duração de ${requestedDuration} min do(s) serviço(s) selecionado(s) não cabe neste intervalo e entra em conflito com outro agendamento existente das ${apptStartH}:${apptStartMStr} às ${apptEndH}:${apptEndMStr}.`
+      }
+    }
+
+    return null
+  }
+
   // Auto-resetar horário se a alteração de serviço/profissional o tornar indisponível
   useEffect(() => {
     if (selectedTime && selectedDate && selectedBarber) {
-      if (isTimeSlotBooked(selectedDate, selectedTime, selectedBarber)) {
+      const reason = getTimeSlotStatusReason(selectedDate, selectedTime, selectedBarber)
+      if (reason) {
         setSelectedTime("")
+        setSlotWarning(reason)
+      } else {
+        setSlotWarning("")
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -549,24 +618,31 @@ export default function Agendar() {
                   <div className="space-y-4 text-center">
                     <label className="text-sm md:text-base font-bold uppercase tracking-wider text-primary block">Selecione o Barbeiro</label>
                     <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12 py-2">
-                      {barbers.slice(0, 3).map((barb, index) => {
+                      {barbers.map((barb) => {
                         const isSelected = selectedBarber === barb.id
-                        const barberPhoto =
-                          index === 0 ? "/assets/foto_marcio.png" :
-                            index === 1 ? "/assets/foto_lucas.png" :
-                              "/assets/foto_neto.png"
+                        const nameLower = (barb.name || "").toLowerCase()
+                        const barberPhoto = barb.photo
+                          ? barb.photo
+                          : nameLower.includes("marcio") || nameLower.includes("márcio")
+                            ? "/assets/foto_marcio.png"
+                            : nameLower.includes("lucas")
+                              ? "/assets/foto_lucas.png"
+                              : "/assets/foto_neto.png"
+
+                        const rawFirst = (barb.name || "").trim().split(/\s+/)[0] || ""
+                        const firstName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase() : ""
 
                         return (
                           <button
                             key={barb.id}
                             type="button"
                             onClick={() => setSelectedBarber(barb.id)}
-                            className="bg-transparent border-none p-0 cursor-pointer focus:outline-none transition-transform"
+                            className="group flex flex-col items-center gap-2.5 bg-transparent border-none p-0 cursor-pointer focus:outline-none transition-transform"
                             title={barb.name}
                           >
                             <div className={`relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 transition-all duration-300 shadow-lg ${isSelected
                                 ? "border-primary ring-4 ring-primary/20 scale-110 shadow-gold"
-                                : "border-border/40 hover:border-primary/50 hover:scale-105"
+                                : "border-border/40 hover:border-primary/50 group-hover:scale-105"
                               }`}>
                               <img
                                 src={barberPhoto}
@@ -574,6 +650,10 @@ export default function Agendar() {
                                 className="w-full h-full object-cover object-top scale-110"
                               />
                             </div>
+                            <span className={`font-display text-sm md:text-base font-bold tracking-wide transition-colors ${isSelected ? "text-primary scale-105" : "text-foreground group-hover:text-primary"
+                              }`}>
+                              {firstName}
+                            </span>
                           </button>
                         )
                       })}
@@ -670,35 +750,64 @@ export default function Agendar() {
                           Barbearia fechada neste dia (Domingo). Por favor, selecione outro dia.
                         </div>
                       ) : (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[280px] overflow-y-auto pr-2">
-                          {getTimeSlots(selectedDate).map(time => {
-                            const isPast = isTimeSlotPast(selectedDate, time)
-                            const isBooked = isTimeSlotBooked(selectedDate, time, selectedBarber)
-                            const isDisabled = isPast || isBooked
+                        <div className="space-y-3">
+                          {selectedServices.length > 0 && (
+                            <div className="text-xs font-semibold text-muted-foreground text-center bg-card/60 p-2.5 rounded-xl border border-border/50">
+                              ⏱️ Duração total dos serviços: <span className="text-primary font-bold">{totalDurationMinutes} min</span>
+                            </div>
+                          )}
 
-                            return (
-                              <button
-                                key={time}
-                                type="button"
-                                disabled={isDisabled}
-                                onClick={() => setSelectedTime(time)}
-                                className={`py-3 text-xs font-bold rounded-xl border transition-all text-center flex flex-col items-center justify-center ${selectedTime === time
-                                    ? "bg-primary border-primary text-primary-foreground shadow-gold scale-105"
-                                    : isPast
-                                      ? "bg-background/20 border-border/10 text-muted-foreground/30 cursor-not-allowed"
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[260px] overflow-y-auto pr-2">
+                            {getTimeSlots(selectedDate).map(time => {
+                              const isPast = isTimeSlotPast(selectedDate, time)
+                              const reason = getTimeSlotStatusReason(selectedDate, time, selectedBarber)
+                              const isBooked = !!reason
+                              const isDisabled = isPast || isBooked
+
+                              return (
+                                <button
+                                  key={time}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isPast) {
+                                      setSlotWarning("Este horário já encerrou para a data selecionada.")
+                                      return
+                                    }
+                                    if (reason) {
+                                      setSlotWarning(reason)
+                                      return
+                                    }
+                                    setSlotWarning("")
+                                    setSelectedTime(time)
+                                  }}
+                                  title={reason || (isPast ? "Horário encerrado" : "Horário disponível")}
+                                  className={`py-3 text-xs font-bold rounded-xl border transition-all text-center flex flex-col items-center justify-center cursor-pointer ${selectedTime === time
+                                      ? "bg-primary border-primary text-primary-foreground shadow-gold scale-105"
                                       : isBooked
-                                        ? "bg-destructive/10 border-destructive/20 text-destructive/50 cursor-not-allowed"
-                                        : "bg-background border-border text-foreground hover:border-primary/50 cursor-pointer"
-                                  }`}
-                                title={isBooked ? "Horário já reservado com este barbeiro" : isPast ? "Horário encerrado" : ""}
-                              >
-                                <span>{time}</span>
-                                {isBooked && (
-                                  <span className="text-[9px] font-semibold text-destructive/70 leading-none mt-0.5">Ocupado</span>
-                                )}
-                              </button>
-                            )
-                          })}
+                                        ? "bg-destructive/10 border-destructive/40 text-destructive hover:bg-destructive/20"
+                                        : isPast
+                                          ? "bg-background/20 border-border/10 text-muted-foreground/30 cursor-not-allowed"
+                                          : "bg-background border-border text-foreground hover:border-primary/50"
+                                    }`}
+                                >
+                                  <span className={isDisabled ? "line-through" : ""}>{time}</span>
+                                  {isBooked && (
+                                    <span className="text-[9px] font-semibold text-destructive mt-0.5 no-underline">Indisponível</span>
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+
+                          {slotWarning && (
+                            <div className="flex items-start gap-2.5 bg-destructive/10 border border-destructive/30 text-destructive text-xs rounded-xl p-3.5 animate-fade-in shadow-sm">
+                              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-bold block text-destructive">Não é possível agendar neste horário:</span>
+                                <span className="text-destructive/90">{slotWarning}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

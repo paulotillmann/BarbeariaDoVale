@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { LayoutDashboard, CalendarDays, CalendarRange, Users, Scissors, Package, User, Settings, LogOut, ChevronLeft, ChevronRight, Wallet } from "lucide-react"
+import { LayoutDashboard, CalendarRange, Users, Scissors, Package, User, Settings, LogOut, ChevronLeft, ChevronRight, Wallet } from "lucide-react"
 import { useAuth } from "../context/AuthContext.jsx"
 
 export default function Sidebar() {
@@ -23,7 +23,6 @@ export default function Sidebar() {
 
   const baseSidebarOptions = [
     { id: "dashboard", label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={20} /> },
-    { id: "agenda", label: "Agenda", path: "/agenda", icon: <CalendarDays size={20} /> },
     { id: "agenda-barbeiros", label: "Agenda Barbeiros", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
     { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
     { id: "caixa", label: "Fluxo de Caixa", path: "/caixa", icon: <Wallet size={20} /> },
@@ -36,7 +35,7 @@ export default function Sidebar() {
   if (user.role === 'admin') {
     sidebarOptions = [...baseSidebarOptions, { id: "configuracoes", label: "Configurações", path: "/configuracoes", icon: <Settings size={20} /> }]
   } else if (user.role === 'barber') {
-    sidebarOptions = baseSidebarOptions.filter(opt => ['agenda', 'agenda-barbeiros', 'clientes'].includes(opt.id))
+    sidebarOptions = baseSidebarOptions.filter(opt => ['agenda-barbeiros', 'clientes'].includes(opt.id))
   } else {
     // Secretário(a)
     sidebarOptions = baseSidebarOptions
