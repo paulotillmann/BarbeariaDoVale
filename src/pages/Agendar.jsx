@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
 import { Calendar as CalendarIcon, Clock, User, Scissors, Star, ArrowLeft, CheckCircle2, AlertTriangle, CalendarDays, MessageCircle, Phone } from "lucide-react"
+import ColorBends from "../components/ColorBends.jsx"
 
 export default function Agendar() {
   const { user, token } = useAuth()
@@ -478,7 +479,28 @@ export default function Agendar() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground pt-24 pb-12 px-4 md:px-8 flex flex-col items-center justify-center">
+    <div className="relative min-h-screen bg-transparent text-foreground pt-24 pb-12 px-4 md:px-8 flex flex-col items-center justify-center">
+
+      {/* Background ColorBends Effect */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-50">
+        <ColorBends
+          colors={["#8c6b12", "#59420b", "#332405"]}
+          rotation={90}
+          speed={0.2}
+          scale={1}
+          frequency={1}
+          warpStrength={1}
+          mouseInfluence={1}
+          noise={0.15}
+          parallax={0.5}
+          iterations={1}
+          intensity={0.9}
+          bandWidth={6}
+          transparent
+          autoRotate={0}
+          color="#59420b"
+        />
+      </div>
 
       {/* Botão Voltar */}
       <Link

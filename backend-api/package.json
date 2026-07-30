@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev --persist-to C:/Users/user/.gemini/antigravity-cli/wrangler-state"
+    "dev": "wrangler dev"
   },
   "dependencies": {
     "hono": "^4.4.12"

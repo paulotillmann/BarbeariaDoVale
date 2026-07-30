@@ -14,6 +14,7 @@ import {
   MessageCircle
 } from "lucide-react"
 import Logo from "../components/Logo.jsx"
+import ColorBends from "../components/ColorBends.jsx"
 import { API_URL } from "../context/AuthContext.jsx"
 
 const Instagram = (props) => (
@@ -142,22 +143,30 @@ export default function Home() {
   }
 
   return (
-    <div className="bg-transparent min-h-screen text-foreground overflow-x-hidden pt-16">
-      
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20 bg-hero-gradient">
-        {/* Background Gradients and Pattern - Premium */}
-        <div className="absolute inset-0 bg-hero-gradient"></div>
-        <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary/8 rounded-full blur-[100px]"></div>
-        <div className="absolute bottom-1/4 -right-32 w-[500px] h-[500px] bg-accent/8 rounded-full blur-[120px]"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[150px] opacity-30"></div>
-        <div
-          className="absolute inset-0 opacity-[0.02]"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
-          }}
-        ></div>
+    <div className="relative bg-transparent min-h-screen text-foreground overflow-x-hidden pt-16">
+      {/* Background ColorBends Effect */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-50">
+        <ColorBends
+          colors={["#8c6b12", "#59420b", "#332405"]}
+          rotation={90}
+          speed={0.2}
+          scale={1}
+          frequency={1}
+          warpStrength={1}
+          mouseInfluence={1}
+          noise={0.15}
+          parallax={0.5}
+          iterations={1}
+          intensity={0.9}
+          bandWidth={6}
+          transparent
+          autoRotate={0}
+          color="#59420b"
+        />
+      </div>
 
+      {/* Hero Section */}
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-5xl mx-auto text-center">
             {/* Shield Logo - Premium */}
@@ -340,10 +349,6 @@ export default function Home() {
 
       {/* Final Call to Action - Premium */}
       <section className="py-24 md:py-40 relative overflow-hidden border-t border-gold-subtle">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-background to-accent/8"></div>
-        <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[150px] opacity-40"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-[700px] h-[700px] bg-accent/10 rounded-full blur-[180px] opacity-30"></div>
-        
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="font-rye text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold mb-8 tracking-tight animate-fade-in">
