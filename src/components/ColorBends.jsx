@@ -139,56 +139,64 @@ export default function ColorBends({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const scene = new THREE.Scene();
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    const geometry = new THREE.PlaneGeometry(2, 2);
-    const uColorsArray = Array.from({ length: MAX_COLORS }, () => new THREE.Vector3(0, 0, 0));
-    const material = new THREE.ShaderMaterial({
-      vertexShader: vert,
-      fragmentShader: frag,
-      uniforms: {
-        uCanvas: { value: new THREE.Vector2(1, 1) },
-        uTime: { value: 0 },
-        uSpeed: { value: speed },
-        uRot: { value: new THREE.Vector2(1, 0) },
-        uColorCount: { value: 0 },
-        uColors: { value: uColorsArray },
-        uTransparent: { value: transparent ? 1 : 0 },
-        uScale: { value: scale },
-        uFrequency: { value: frequency },
-        uWarpStrength: { value: warpStrength },
-        uPointer: { value: new THREE.Vector2(0, 0) },
-        uMouseInfluence: { value: mouseInfluence },
-        uParallax: { value: parallax },
-        uNoise: { value: noise },
-        uIterations: { value: iterations },
-        uIntensity: { value: intensity },
-        uBandWidth: { value: bandWidth }
-      },
-      premultipliedAlpha: true,
-      transparent: true
-    });
-    materialRef.current = material;
+    let scene, camera, geometry, material, mesh, renderer, clock;
 
-    const mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
+    try {
+      scene = new THREE.Scene();
+      camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: false,
-      powerPreference: 'high-performance',
-      alpha: true
-    });
-    rendererRef.current = renderer;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0x000000, transparent ? 0 : 1);
-    renderer.domElement.style.width = '100%';
-    renderer.domElement.style.height = '100%';
-    renderer.domElement.style.display = 'block';
-    container.appendChild(renderer.domElement);
+      geometry = new THREE.PlaneGeometry(2, 2);
+      const uColorsArray = Array.from({ length: MAX_COLORS }, () => new THREE.Vector3(0, 0, 0));
+      material = new THREE.ShaderMaterial({
+        vertexShader: vert,
+        fragmentShader: frag,
+        uniforms: {
+          uCanvas: { value: new THREE.Vector2(1, 1) },
+          uTime: { value: 0 },
+          uSpeed: { value: speed },
+          uRot: { value: new THREE.Vector2(1, 0) },
+          uColorCount: { value: 0 },
+          uColors: { value: uColorsArray },
+          uTransparent: { value: transparent ? 1 : 0 },
+          uScale: { value: scale },
+          uFrequency: { value: frequency },
+          uWarpStrength: { value: warpStrength },
+          uPointer: { value: new THREE.Vector2(0, 0) },
+          uMouseInfluence: { value: mouseInfluence },
+          uParallax: { value: parallax },
+          uNoise: { value: noise },
+          uIterations: { value: iterations },
+          uIntensity: { value: intensity },
+          uBandWidth: { value: bandWidth }
+        },
+        premultipliedAlpha: true,
+        transparent: true
+      });
+      materialRef.current = material;
 
-    const clock = new THREE.Clock();
+      mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh);
+
+      renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        powerPreference: 'high-performance',
+        alpha: true
+      });
+      rendererRef.current = renderer;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setClearColor(0x000000, transparent ? 0 : 1);
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+      renderer.domElement.style.display = 'block';
+      container.appendChild(renderer.domElement);
+
+      clock = new THREE.Clock();
+    } catch (err) {
+      console.warn("ColorBends WebGL initialization failed:", err);
+      return;
+    }
 
     const handleResize = () => {
       const w = container.clientWidth || 1;
@@ -232,12 +240,14 @@ export default function ColorBends({
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
       else window.removeEventListener('resize', handleResize);
-      geometry.dispose();
-      material.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-      if (renderer.domElement && renderer.domElement.parentElement === container) {
-        container.removeChild(renderer.domElement);
+      if (geometry) geometry.dispose();
+      if (material) material.dispose();
+      if (renderer) {
+        renderer.dispose();
+        renderer.forceContextLoss();
+        if (renderer.domElement && renderer.domElement.parentElement === container) {
+          container.removeChild(renderer.domElement);
+        }
       }
     };
   }, [bandWidth, frequency, intensity, iterations, mouseInfluence, noise, parallax, scale, speed, transparent, warpStrength]);
