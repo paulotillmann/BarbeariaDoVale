@@ -33,6 +33,18 @@ export default function AgendaGrid() {
   const [customers, setCustomers] = useState([])
   const [isRealtimeEnabled] = useState(true)
 
+  // Detecção de Dispositivo Móvel (tela < 768px) e Seleção de Barbeiro no Mobile
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false)
+  const [selectedMobileBarberId, setSelectedMobileBarberId] = useState("")
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
   // Helper para obter a data local no formato YYYY-MM-DD
   const getTodayStr = () => {
     const d = new Date()
@@ -65,14 +77,24 @@ export default function AgendaGrid() {
 
   const getAvailableCancelTimeSlots = (dateString, isEnd = false) => {
     const slots = getTimeSlots(dateString)
-    if (!dateString) return isEnd ? [...slots, "20:00"] : slots
+
+    let closingTime = "20:00"
+    if (dateString) {
+      const dateParts = dateString.split("-")
+      if (dateParts.length === 3) {
+        const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
+        if (dateObj.getDay() === 6) closingTime = "16:00"
+      }
+    }
+
+    if (!dateString) return isEnd ? [...slots, closingTime] : slots
 
     const todayString = getTodayStr()
     if (dateString === todayString) {
       const now = new Date()
       const currentMin = now.getHours() * 60 + now.getMinutes()
 
-      const baseSlots = isEnd ? [...slots, "20:00"] : slots
+      const baseSlots = isEnd ? [...slots, closingTime] : slots
       return baseSlots.filter((timeStr) => {
         const [h, m] = timeStr.split(":").map(Number)
         if (isNaN(h) || isNaN(m)) return true
@@ -84,7 +106,7 @@ export default function AgendaGrid() {
       })
     }
 
-    return isEnd ? [...slots, "20:00"] : slots
+    return isEnd ? [...slots, closingTime] : slots
   }
 
   const handleOpenCancelRangeModal = (barberId, slotTime) => {
@@ -207,7 +229,22 @@ export default function AgendaGrid() {
 
         if (apptRes.ok) setAppointments(await apptRes.json())
         if (srvRes.ok) setServices(await srvRes.json())
-        if (barbRes.ok) setBarbers(await barbRes.json())
+        if (barbRes.ok) {
+          const loadedBarbers = await barbRes.json()
+          setBarbers(loadedBarbers)
+
+          // Selecionar por padrão o barbeiro do usuário logado se existir, ou o primeiro barbeiro
+          if (loadedBarbers.length > 0) {
+            const userBarber = loadedBarbers.find(
+              (b) => String(b.id) === String(user?.id) || (b.user_id && String(b.user_id) === String(user?.id))
+            )
+            if (userBarber) {
+              setSelectedMobileBarberId(String(userBarber.id))
+            } else {
+              setSelectedMobileBarberId(String(loadedBarbers[0].id))
+            }
+          }
+        }
         if (custRes.ok) setCustomers(await custRes.json())
       } catch (err) {
         console.error("Erro ao carregar dados da agenda grid:", err)
@@ -297,7 +334,7 @@ export default function AgendaGrid() {
 
     const slots = []
     let startHour = 9
-    let endHour = dayOfWeek === 6 ? 16 : 19
+    let endHour = dayOfWeek === 6 ? 16 : 20
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, "0")}:00`)
@@ -352,7 +389,7 @@ export default function AgendaGrid() {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 16 : 19
+      const closingHour = dayOfWeek === 6 ? 16 : 20
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }
@@ -802,19 +839,65 @@ export default function AgendaGrid() {
           </div>
         )}
 
+        {/* Seletor Rápido de Barbeiro no Mobile */}
+        {isMobile && user?.role !== 'barber' && barbers.length > 1 && (
+          <div className="bg-card/45 backdrop-blur-md border border-border/80 rounded-2xl p-3 shadow-xs flex items-center gap-2 overflow-x-auto custom-scrollbar">
+            <span className="text-xs font-bold text-muted-foreground whitespace-nowrap">Profissional:</span>
+            <div className="flex items-center gap-2">
+              {barbers.map((b, idx) => {
+                const isSel = String(b.id) === String(selectedMobileBarberId) || (b.user_id && String(b.user_id) === String(selectedMobileBarberId))
+                const photo = b.photo || (idx === 0 ? "/assets/foto_marcio.png" : idx === 1 ? "/assets/foto_lucas.png" : "/assets/foto_neto.png")
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setSelectedMobileBarberId(String(b.id))}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      isSel
+                        ? "bg-gold-gradient text-black border-gold-subtle shadow-md"
+                        : "bg-black/30 text-muted-foreground border-border/40 hover:text-foreground"
+                    }`}
+                  >
+                    <img src={photo} alt={b.name} className="w-5 h-5 rounded-full object-cover border border-black/20" />
+                    <span>{b.name.split(" ")[0]}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Componente CEventCalendar2 */}
-        <CEventCalendar2
-          barbers={
-            user?.role === 'barber'
-              ? barbers.filter(b => String(b.id) === String(user.id) || String(b.user_id) === String(user.id))
-              : barbers
+        {(() => {
+          let displayedBarbers = barbers
+          if (user?.role === 'barber') {
+            displayedBarbers = barbers.filter(
+              b => String(b.id) === String(user.id) || String(b.user_id) === String(user.id)
+            )
+          } else if (isMobile) {
+            if (selectedMobileBarberId) {
+              const matched = barbers.filter(
+                b => String(b.id) === String(selectedMobileBarberId) || (b.user_id && String(b.user_id) === String(selectedMobileBarberId))
+              )
+              if (matched.length > 0) displayedBarbers = matched
+              else if (barbers.length > 0) displayedBarbers = [barbers[0]]
+            } else if (barbers.length > 0) {
+              displayedBarbers = [barbers[0]]
+            }
           }
-          appointments={appointments}
-          selectedDate={selectedDate}
-          onSelectSlot={handleSelectSlot}
-          onCancelSlot={handleOpenCancelRangeModal}
-          onSelectAppointment={handleSelectAppointment}
-        />
+
+          return (
+            <CEventCalendar2
+              barbers={displayedBarbers}
+              appointments={appointments}
+              selectedDate={selectedDate}
+              isMobile={isMobile}
+              onSelectSlot={handleSelectSlot}
+              onCancelSlot={handleOpenCancelRangeModal}
+              onSelectAppointment={handleSelectAppointment}
+            />
+          )
+        })()}
       </div>
 
       {/* MODAL DE CANCELAR / BLOQUEAR INTERVALO DE HORÁRIOS */}
@@ -1036,20 +1119,6 @@ export default function AgendaGrid() {
             <p className="text-sm text-muted-foreground mb-6">
               Para o dia <span className="font-bold text-foreground font-mono">{selectedDate ? formatBirthDate(selectedDate) : ""}</span>
             </p>
-
-            {error && (
-              <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-xl p-4 mb-6">
-                <AlertTriangle size={18} className="shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {successMsg && (
-              <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 mb-6">
-                <CheckCircle2 size={18} className="shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            )}
 
             <form onSubmit={handleSaveAppointment} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1284,6 +1353,21 @@ export default function AgendaGrid() {
                   </div>
                 )}
               </div>
+
+              {/* Mensagens de Aviso / Erro / Sucesso Posicionadas Abaixo do Seletor de Horários */}
+              {error && (
+                <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-xl p-4 mt-3 animate-fade-in">
+                  <AlertTriangle size={18} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {successMsg && (
+                <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 mt-3 animate-fade-in">
+                  <CheckCircle2 size={18} className="shrink-0" />
+                  <span>{successMsg}</span>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-4 border-t border-border/40 mt-6 flex-wrap">
                 {editingAppointmentId && (() => {

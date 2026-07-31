@@ -634,7 +634,7 @@ app.delete('/api/barbers/:id', authMiddleware, async (c) => {
 app.get('/api/appointments/occupied', async (c) => {
   try {
     const query = `
-      SELECT a.id, a.barber_id, a.appointment_time, a.status,
+      SELECT a.id, a.barber_id, a.appointment_time, a.status, a.cancellation_reason,
              b.name as barber_name,
              COALESCE(
                (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
@@ -893,7 +893,7 @@ app.post('/api/appointments', authMiddleware, async (c) => {
 
         const reqDateObj = new Date(dateStr + "T00:00:00");
         const dayOfWeek = reqDateObj.getDay();
-        const closingHour = 20;
+        const closingHour = dayOfWeek === 6 ? 16 : 20;
         if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
           return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
         }
@@ -1061,7 +1061,7 @@ app.post('/api/appointments/quick', async (c) => {
 
         const reqDateObj = new Date(dateStr + "T00:00:00");
         const dayOfWeek = reqDateObj.getDay();
-        const closingHour = 20;
+        const closingHour = dayOfWeek === 6 ? 16 : 20;
         if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
           return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
         }

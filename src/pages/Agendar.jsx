@@ -136,7 +136,7 @@ export default function Agendar() {
 
     const slots = []
     const startHour = 9
-    const endHour = 20 // Horários das 09:00 às 20:00
+    const endHour = dayOfWeek === 6 ? 16 : 20 // Horários das 09:00 às 20:00 (Sábados até 16:00)
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -180,7 +180,7 @@ export default function Agendar() {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = 20
+      const closingHour = dayOfWeek === 6 ? 16 : 20
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }
@@ -193,8 +193,12 @@ export default function Agendar() {
       if (!appt.appointment_time || !appt.appointment_time.startsWith(dateString)) return false
 
       // Verificar se é do mesmo barbeiro
-      const matchesBarberId = appt.barber_id && String(appt.barber_id) === String(targetBarberId)
-      const matchesBarberName = barbName && appt.barber_name && appt.barber_name.toLowerCase() === barbName.toLowerCase()
+      const matchesBarberId = appt.barber_id && (
+        String(appt.barber_id) === String(targetBarberId) ||
+        (barbObj?.user_id && String(appt.barber_id) === String(barbObj.user_id)) ||
+        (barbObj?.id && String(appt.barber_id) === String(barbObj.id))
+      )
+      const matchesBarberName = barbName && appt.barber_name && appt.barber_name.trim().toLowerCase() === barbName.trim().toLowerCase()
       if (!matchesBarberId && !matchesBarberName) return false
 
       // Extrair horário do agendamento existente
@@ -233,12 +237,19 @@ export default function Agendar() {
     const requestedDuration = selectedServices.length > 0 ? totalDurationMinutes : 30
     const slotEndMinutes = slotStartMinutes + requestedDuration
 
-    // 1. Verificar se ultrapassa o horário de funcionamento (20:00)
-    const closingMinutes = 20 * 60
+    let closingHour = 20
+    if (dateString) {
+      const dateParts = dateString.split("-")
+      if (dateParts.length === 3) {
+        const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
+        if (dateObj.getDay() === 6) closingHour = 16
+      }
+    }
+    const closingMinutes = closingHour * 60
     if (slotEndMinutes > closingMinutes) {
       const endH = String(Math.floor(slotEndMinutes / 60)).padStart(2, '0')
       const endM = String(slotEndMinutes % 60).padStart(2, '0')
-      return `O(s) serviço(s) selecionado(s) possuem duração total de ${requestedDuration} min. Iniciando às ${timeString}, o atendimento terminaria às ${endH}:${endM}, ultrapassando o horário de encerramento das 20:00.`
+      return `O(s) serviço(s) selecionado(s) possuem duração total de ${requestedDuration} min. Iniciando às ${timeString}, o atendimento terminaria às ${endH}:${endM}, ultrapassando o horário de encerramento das ${closingHour}:00.`
     }
 
     // 2. Verificar conflitos com agendamentos ou bloqueios existentes
@@ -246,8 +257,12 @@ export default function Agendar() {
       if (appt.status === 'cancelled' && !appt.cancellation_reason) continue
       if (!appt.appointment_time || !appt.appointment_time.startsWith(dateString)) continue
 
-      const matchesBarberId = appt.barber_id && String(appt.barber_id) === String(targetBarberId)
-      const matchesBarberName = barbName && appt.barber_name && appt.barber_name.toLowerCase() === barbName.toLowerCase()
+      const matchesBarberId = appt.barber_id && (
+        String(appt.barber_id) === String(targetBarberId) ||
+        (barbObj?.user_id && String(appt.barber_id) === String(barbObj.user_id)) ||
+        (barbObj?.id && String(appt.barber_id) === String(barbObj.id))
+      )
+      const matchesBarberName = barbName && appt.barber_name && appt.barber_name.trim().toLowerCase() === barbName.trim().toLowerCase()
       if (!matchesBarberId && !matchesBarberName) continue
 
       const timePart = appt.appointment_time.split('T')[1] || ""
@@ -828,6 +843,13 @@ export default function Agendar() {
                                 <span className="font-bold block text-destructive">Não é possível agendar neste horário:</span>
                                 <span className="text-destructive/90">{slotWarning}</span>
                               </div>
+                            </div>
+                          )}
+
+                          {error && (
+                            <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 text-destructive text-xs rounded-xl p-3.5 animate-fade-in">
+                              <AlertTriangle size={16} className="shrink-0" />
+                              <span>{error}</span>
                             </div>
                           )}
                         </div>

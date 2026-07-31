@@ -168,7 +168,7 @@ export default function Agenda() {
 
     const slots = []
     let startHour = 9
-    let endHour = dayOfWeek === 6 ? 16 : 19
+    let endHour = dayOfWeek === 6 ? 16 : 20
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -206,7 +206,7 @@ export default function Agenda() {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 16 : 19
+      const closingHour = dayOfWeek === 6 ? 16 : 20
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }
@@ -1239,20 +1239,6 @@ export default function Agenda() {
               Para o dia <span className="font-bold text-foreground font-mono">{selectedDate ? formatBirthDate(selectedDate) : ""}</span>
             </p>
 
-            {error && (
-              <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-xl p-4 mb-6">
-                <AlertTriangle size={18} className="shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {successMsg && (
-              <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 mb-6">
-                <CheckCircle2 size={18} className="shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            )}
-
             <form onSubmit={handleCreateAppointment} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
@@ -1481,6 +1467,21 @@ export default function Agenda() {
                   </div>
                 )}
               </div>
+
+              {/* Mensagens de Aviso / Erro / Sucesso Posicionadas Abaixo do Seletor de Horários */}
+              {error && (
+                <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-xl p-4 mt-3 animate-fade-in">
+                  <AlertTriangle size={18} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {successMsg && (
+                <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-xl p-4 mt-3 animate-fade-in">
+                  <CheckCircle2 size={18} className="shrink-0" />
+                  <span>{successMsg}</span>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-4 border-t border-border/40 mt-6 flex-wrap">
                 {editingAppointmentId && (() => {

@@ -34,9 +34,10 @@ export default function Login() {
   }, [])
 
   useEffect(() => {
-    // Se o usuário já estiver logado, redireciona para o dashboard
+    // Se o usuário já estiver logado, redireciona para a agenda se for mobile, ou dashboard se for desktop
     if (user) {
-      navigate("/dashboard")
+      const isMobile = window.innerWidth < 768
+      navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
     }
   }, [user, navigate])
 
@@ -75,7 +76,8 @@ export default function Login() {
           localStorage.removeItem("rememberedLoginKey")
         }
       }
-      navigate("/dashboard")
+      const isMobile = window.innerWidth < 768
+      navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
     } catch (err) {
       setError(err.message || "Ocorreu um erro. Tente novamente.")
     } finally {

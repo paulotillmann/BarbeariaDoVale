@@ -43,6 +43,21 @@ export default function Sidebar() {
 
   const currentPath = location.pathname
 
+  const mobileOptions = [
+    { id: "agenda-barbeiros", label: "Agenda", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
+    { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
+    { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> },
+    {
+      id: "logout",
+      label: "Sair",
+      action: () => {
+        logout()
+        navigate("/login")
+      },
+      icon: <LogOut size={20} />
+    }
+  ]
+
   return (
     <>
       {/* Sidebar Vertical para Telas Grandes (Desktop) */}
@@ -187,8 +202,21 @@ export default function Sidebar() {
 
       {/* Navigation Bar Horizontal para Telas Pequenas (Mobile) - Pílula Flutuante Inferior */}
       <aside className="lg:hidden fixed bottom-4 left-4 right-4 h-16 bg-gold-gradient rounded-full shadow-gold-lg flex items-center justify-around px-4 z-50 border border-gold-subtle">
-        {sidebarOptions.map((opt) => {
-          const isSelected = currentPath === opt.path
+        {mobileOptions.map((opt) => {
+          const isSelected = opt.path && currentPath === opt.path
+          if (opt.action) {
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={opt.action}
+                className="p-3 rounded-full transition-all duration-300 flex flex-col items-center justify-center text-black/70 hover:text-black hover:bg-black/10 cursor-pointer"
+                title={opt.label}
+              >
+                {opt.icon}
+              </button>
+            )
+          }
           return (
             <Link
               key={opt.id}

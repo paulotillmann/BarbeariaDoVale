@@ -9,6 +9,7 @@ export default function CEventCalendar2({
   barbers = [],
   appointments = [],
   selectedDate = "",
+  isMobile = false,
   onSelectSlot,
   onCancelSlot,
   onSelectAppointment
@@ -223,9 +224,9 @@ export default function CEventCalendar2({
           </div>
         )}
 
-        <table className="w-full min-w-[700px] border-collapse text-left table-fixed">
+        <table className={`w-full border-collapse text-left table-fixed ${isMobile || barbers.length === 1 ? "w-full min-w-0" : "min-w-[650px] md:min-w-0"}`}>
           <colgroup>
-            <col className="w-24" />
+            <col className={barbers.length === 1 ? "w-16 md:w-24" : "w-20 md:w-24"} />
             {barbers.map((barber, index) => (
               <col key={barber.id || index} style={{ width: `${100 / Math.max(1, barbers.length)}%` }} />
             ))}
@@ -233,7 +234,7 @@ export default function CEventCalendar2({
           {/* Cabeçalho: Colunas com Barbeiros */}
           <thead className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border/80">
             <tr>
-              <th className="w-24 p-3 text-center text-xs font-black uppercase tracking-widest text-primary border-r border-border/60 bg-black/40">
+              <th className="w-16 md:w-24 p-2 md:p-3 text-center text-[10px] md:text-xs font-black uppercase tracking-widest text-primary border-r border-border/60 bg-black/40">
                 <div className="flex items-center justify-center gap-1">
                   <Clock size={14} /> Horário
                 </div>
@@ -250,10 +251,10 @@ export default function CEventCalendar2({
                 return (
                   <th
                     key={barber.id || index}
-                    className="p-3 text-center border-r border-border/40 last:border-r-0 min-w-[180px]"
+                    className="p-2 md:p-3 text-center border-r border-border/40 last:border-r-0 min-w-0"
                   >
-                    <div className="flex items-center justify-center gap-2.5">
-                      <div className="w-12 h-12 rounded-full overflow-hidden border border-gold-subtle shadow-xs bg-background flex items-center justify-center shrink-0">
+                    <div className="flex items-center justify-center gap-2 md:gap-2.5">
+                      <div className="w-9 h-9 md:w-12 md:h-12 rounded-full overflow-hidden border border-gold-subtle shadow-xs bg-background flex items-center justify-center shrink-0">
                         {barberPhoto ? (
                           <img
                             src={barberPhoto}
@@ -261,14 +262,14 @@ export default function CEventCalendar2({
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <User size={24} className="text-muted-foreground" />
+                          <User size={20} className="text-muted-foreground" />
                         )}
                       </div>
-                      <div>
-                        <div className="font-extrabold text-sm text-foreground leading-tight">
+                      <div className="min-w-0 text-left">
+                        <div className="font-extrabold text-xs md:text-sm text-foreground leading-tight truncate">
                           {barber.name}
                         </div>
-                        <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                        <div className="text-[9px] md:text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
                           Barbeiro
                         </div>
                       </div>
@@ -291,9 +292,9 @@ export default function CEventCalendar2({
                   className={`h-14 transition-colors duration-150 ${isHourHeader ? "bg-background/20" : "bg-transparent"
                     }`}
                 >
-                  <td className="p-2.5 text-center border-r border-border/60 bg-black/20 text-[10pt] font-mono font-bold text-muted-foreground sticky left-0 z-10 h-14">
+                  <td className="p-1 md:p-2.5 text-center border-r border-border/60 bg-black/20 text-[9pt] md:text-[10pt] font-mono font-bold text-muted-foreground sticky left-0 z-10 h-14">
                     <span
-                      className={`inline-block px-2 py-0.5 rounded-lg border ${isHourHeader
+                      className={`inline-block px-1.5 md:px-2 py-0.5 rounded-lg border ${isHourHeader
                           ? "bg-primary/10 text-primary border-primary/30 font-black"
                           : "border-transparent text-muted-foreground/80"
                         }`}
@@ -453,22 +454,22 @@ export default function CEventCalendar2({
                           >
                           </div>
                         ) : (
-                          <div className="w-full h-full rounded-xl hover:bg-primary/10 border border-transparent hover:border-primary/30 transition-all flex items-center justify-center gap-2 group p-1">
+                          <div className="w-full h-full rounded-xl hover:bg-primary/10 border border-transparent hover:border-primary/30 transition-all flex items-center justify-center gap-1.5 md:gap-2 group p-0.5 md:p-1">
                             <button
                               type="button"
                               onClick={() => onSelectSlot && onSelectSlot(barber.id, slotTime)}
-                              className="w-7 h-7 rounded-lg bg-primary/20 hover:bg-primary text-primary hover:text-background flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 transform group-hover:scale-110 shadow-sm cursor-pointer"
+                              className="w-8 h-8 md:w-7 md:h-7 rounded-lg bg-primary/20 hover:bg-primary text-primary hover:text-background flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-200 transform md:group-hover:scale-110 shadow-sm cursor-pointer"
                               title={`Novo Agendamento com ${barber.name} às ${slotTime}`}
                             >
-                              <Plus size={15} strokeWidth={2.5} />
+                              <Plus size={16} strokeWidth={2.5} />
                             </button>
                             <button
                               type="button"
                               onClick={() => onCancelSlot && onCancelSlot(barber.id, slotTime)}
-                              className="w-7 h-7 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 transform group-hover:scale-110 shadow-sm cursor-pointer"
+                              className="w-8 h-8 md:w-7 md:h-7 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-200 transform md:group-hover:scale-110 shadow-sm cursor-pointer"
                               title={`Cancelar / Bloquear horário de ${barber.name} às ${slotTime}`}
                             >
-                              <X size={15} strokeWidth={2.5} />
+                              <X size={16} strokeWidth={2.5} />
                             </button>
                           </div>
                         )}
