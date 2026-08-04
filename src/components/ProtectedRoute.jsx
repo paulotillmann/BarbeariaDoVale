@@ -12,7 +12,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    const defaultRedirect = user.role === "barber" ? "/agenda" : "/dashboard"
+    const defaultRedirect = user.role === "barber" ? "/agenda-barbeiros" : "/dashboard"
     return <Navigate to={defaultRedirect} replace />
   }
 

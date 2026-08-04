@@ -1110,7 +1110,7 @@ export default function AgendaGrid() {
       {/* MODAL DE CRIAÇÃO / EDIÇÃO DE AGENDAMENTO (MODELO ORIGINAL IGUAL À AGENDA) */}
       {isAppointmentModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-lg border border-primary/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#1c1c20]/95 backdrop-blur-xl w-full max-w-3xl md:max-w-4xl border border-primary/30 rounded-2xl p-6 md:p-8 shadow-2xl relative animate-scale-in max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold font-display mb-6 text-primary flex items-center gap-2">
               {editingAppointmentId ? <Edit3 size={20} /> : <Plus size={20} />}
               {editingAppointmentId ? "Editar Agendamento" : "Novo Agendamento"}
@@ -1250,7 +1250,7 @@ export default function AgendaGrid() {
               {/* Selecionar Serviços (Múltiplos) */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Serviços Desejados *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-1 bg-background/25 border border-border/40 rounded-xl">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto p-1.5 bg-background/25 border border-border/40 rounded-xl">
                   {services.map((srv) => {
                     const isSelected = selectedServices.includes(srv.id)
                     return (
@@ -1292,7 +1292,7 @@ export default function AgendaGrid() {
                 <div className="bg-primary/10 border border-primary/30 rounded-xl p-3.5 flex items-center justify-between text-xs animate-fade-in">
                   <div>
                     <span className="font-bold text-primary block text-[10px] uppercase tracking-wider">Resumo Combinado</span>
-                    <span className="text-foreground font-semibold text-xs truncate max-w-[220px] block">
+                    <span className="text-foreground font-semibold text-xs truncate max-w-[450px] block">
                       {selectedServicesDetails.map((s) => s.name).join(" + ")}
                     </span>
                   </div>
@@ -1317,7 +1317,7 @@ export default function AgendaGrid() {
                     Barbearia fechada neste dia (Domingo).
                   </p>
                 ) : (
-                  <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto p-1 bg-background/25 border border-border/40 rounded-xl">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 max-h-40 overflow-y-auto p-1.5 bg-background/25 border border-border/40 rounded-xl">
                     {getTimeSlots(selectedDate).map((time) => {
                       const isPast = isTimeSlotPast(selectedDate, time)
                       const isBooked = isTimeSlotBooked(selectedDate, time)

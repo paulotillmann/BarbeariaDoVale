@@ -69,7 +69,7 @@ export default function Sidebar() {
         <div className="space-y-4">
           {/* Cabeçalho do Sidebar com Logo Redimensionável e Botão de Toggle na Borda */}
           <div className="flex flex-col items-center border-b border-black/10 pb-3 relative">
-            <Link to="/dashboard" className="transition-transform duration-700 hover:scale-105 mt-2">
+            <Link to={user.role === 'barber' ? "/agenda-barbeiros" : "/dashboard"} className="transition-transform duration-700 hover:scale-105 mt-2">
               <img
                 src="/assets/logo-nova-sem-borda.png"
                 alt="Barbearia Do Vale"

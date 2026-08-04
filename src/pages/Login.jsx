@@ -34,10 +34,14 @@ export default function Login() {
   }, [])
 
   useEffect(() => {
-    // Se o usuário já estiver logado, redireciona para a agenda se for mobile, ou dashboard se for desktop
+    // Se o usuário já estiver logado, barbeiros vão para a agenda-barbeiros; os demais seguem a lógica por dispositivo
     if (user) {
-      const isMobile = window.innerWidth < 768
-      navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
+      if (user.role === "barber") {
+        navigate("/agenda-barbeiros")
+      } else {
+        const isMobile = window.innerWidth < 768
+        navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
+      }
     }
   }, [user, navigate])
 
@@ -47,6 +51,7 @@ export default function Login() {
     setLoading(true)
 
     try {
+      let loggedUser = null
       if (isRegister) {
         if (!name.trim()) {
           setError("O nome é obrigatório.")
@@ -61,7 +66,7 @@ export default function Login() {
           return
         }
 
-        await register(name, cleanPhone, email.trim() || null, password, "client")
+        loggedUser = await register(name, cleanPhone, email.trim() || null, password, "client")
       } else {
         if (!loginKey.trim()) {
           setError("Por favor, insira seu telefone ou e-mail.")
@@ -69,15 +74,20 @@ export default function Login() {
           return
         }
 
-        await login(loginKey.trim(), password)
+        loggedUser = await login(loginKey.trim(), password)
         if (rememberMe) {
           localStorage.setItem("rememberedLoginKey", loginKey.trim())
         } else {
           localStorage.removeItem("rememberedLoginKey")
         }
       }
-      const isMobile = window.innerWidth < 768
-      navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
+      const targetRole = loggedUser?.role || user?.role
+      if (targetRole === "barber") {
+        navigate("/agenda-barbeiros")
+      } else {
+        const isMobile = window.innerWidth < 768
+        navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
+      }
     } catch (err) {
       setError(err.message || "Ocorreu um erro. Tente novamente.")
     } finally {
