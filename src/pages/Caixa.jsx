@@ -22,9 +22,11 @@ import {
   ChevronRight,
   User,
   Check,
-  ChevronDown
+  ChevronDown,
+  ShoppingBag
 } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
+import SaleModal from "../components/SaleModal.jsx"
 
 const ITEMS_PER_PAGE = 12
 
@@ -94,6 +96,12 @@ export default function Caixa() {
     onConfirm: null
   })
 
+  // Modal de Vendas
+  const [products, setProducts] = useState([])
+  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false)
+  const [selectedSale, setSelectedSale] = useState(null)
+  const [selectedAppointmentForSale, setSelectedAppointmentForSale] = useState(null)
+
   const loadData = useCallback(async () => {
     if (!token) return
     setLoading(true)
@@ -116,12 +124,109 @@ export default function Caixa() {
         const bData = await bRes.json()
         setBarbers(bData || [])
       }
+
+      // 3. Carregar Produtos para autocomplete de vendas
+      const pRes = await fetch(`${API_URL}/api/products`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (pRes.ok) {
+        const pData = await pRes.json()
+        setProducts(Array.isArray(pData) ? pData : [])
+      }
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
   }, [token])
+
+  const handleOpenSaleModal = async (transaction) => {
+    setError("")
+    let saleId = null
+    if (transaction.id && transaction.id.startsWith("caixa-sale-")) {
+      saleId = transaction.id.replace("caixa-sale-", "")
+    } else if (transaction.appointment_id) {
+      try {
+        const sRes = await fetch(`${API_URL}/api/sales/appointment/${transaction.appointment_id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (sRes.ok) {
+          const sData = await sRes.json()
+          if (sData && sData.id) saleId = sData.id
+        }
+      } catch (err) {
+        console.error("Erro ao buscar venda associada:", err)
+      }
+    }
+
+    if (!saleId) {
+      setError("Não foi possível localizar o código da venda associada.")
+      return
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/sales/${saleId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        throw new Error("Venda não encontrada.")
+      }
+      const saleData = await res.json()
+      if (!saleData) {
+        throw new Error("Venda não encontrada.")
+      }
+
+      setSelectedSale(saleData)
+      setSelectedAppointmentForSale({
+        id: saleData.appointment_id || transaction.appointment_id || null,
+        client_name: saleData.client_name || "Cliente",
+        client_id: saleData.customer_id || null,
+        appointment_time: saleData.appointment_time || transaction.date || ""
+      })
+      setIsSaleModalOpen(true)
+    } catch (err) {
+      setError(err.message || "Erro ao carregar dados da venda.")
+    }
+  }
+
+  const handleSaveSale = async (salePayload) => {
+    const url = salePayload.id ? `${API_URL}/api/sales/${salePayload.id}` : `${API_URL}/api/sales`
+    const method = salePayload.id ? "PUT" : "POST"
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(salePayload)
+    })
+
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.error || "Erro ao salvar a venda.")
+    }
+
+    setSuccess("Venda atualizada com sucesso! Alterações sincronizadas no caixa e agendamentos.")
+    setTimeout(() => setSuccess(""), 5000)
+    await loadData()
+  }
+
+  const handleDeleteSale = async (saleId) => {
+    const res = await fetch(`${API_URL}/api/sales/${saleId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.error || "Erro ao excluir a venda.")
+    }
+
+    setSuccess("Venda e lançamento de caixa excluídos com sucesso!")
+    setTimeout(() => setSuccess(""), 5000)
+    await loadData()
+  }
 
   useEffect(() => {
     if (!user) {
@@ -415,15 +520,35 @@ export default function Caixa() {
   const filteredSummary = useMemo(() => {
     let rec = 0
     let desp = 0
+    let serv = 0
+    let prod = 0
+
     filteredTransactions.forEach((t) => {
       const v = Number(t.amount) || 0
-      if (t.type === "receita") rec += v
-      else if (t.type === "despesa") desp += v
+      if (t.type === "receita") {
+        rec += v
+        const isProduto = t.category === "Venda de Produtos" || t.category === "Produto" || (t.id && t.id.startsWith("caixa-sale-"))
+        if (isProduto) {
+          prod += v
+        } else {
+          serv += v
+        }
+      } else if (t.type === "despesa") {
+        desp += v
+      }
     })
+
+    const pctServ = rec > 0 ? (serv / rec) * 100 : 0
+    const pctProd = rec > 0 ? (prod / rec) * 100 : 0
+
     return {
       total_receitas: rec,
       total_despesas: desp,
-      saldo: rec - desp
+      saldo: rec - desp,
+      total_servicos: serv,
+      total_produtos: prod,
+      pct_servicos: pctServ,
+      pct_produtos: pctProd
     }
   }, [filteredTransactions])
 
@@ -495,63 +620,119 @@ export default function Caixa() {
           </div>
 
           {/* Cards de Resumo Financeiro */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             {/* Card Total Receitas */}
-            <div className="bg-muted/30 border border-green-500/30 rounded-2xl p-5 relative overflow-hidden group shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <ArrowUpRight size={16} className="text-green-400" /> Total Receitas
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400">
-                  <TrendingUp size={18} />
+            <div className="bg-muted/30 border border-green-500/30 rounded-2xl p-5 relative overflow-hidden group shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <ArrowUpRight size={16} className="text-green-400" /> Total Receitas
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400">
+                    <TrendingUp size={18} />
+                  </div>
+                </div>
+                <div className="font-display font-black text-2xl text-green-400">
+                  {formatCurrency(filteredSummary.total_receitas)}
                 </div>
               </div>
-              <div className="font-display font-black text-2xl text-green-400">
-                {formatCurrency(filteredSummary.total_receitas)}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-[10px] text-muted-foreground mt-2">
                 Entradas de serviços e vendas
               </p>
             </div>
 
-            {/* Card Total Despesas */}
-            <div className="bg-muted/30 border border-rose-500/30 rounded-2xl p-5 relative overflow-hidden group shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <ArrowDownRight size={16} className="text-rose-400" /> Total Despesas
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-                  <TrendingDown size={18} />
+            {/* Card Soma de Serviços */}
+            <div className="bg-muted/30 border border-amber-500/30 rounded-2xl p-5 relative overflow-hidden group shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Scissors size={16} className="text-amber-400" /> Serviços
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <Scissors size={18} />
+                  </div>
+                </div>
+                <div className="font-display font-black text-2xl text-amber-400">
+                  {formatCurrency(filteredSummary.total_servicos)}
                 </div>
               </div>
-              <div className="font-display font-black text-2xl text-rose-400">
-                {formatCurrency(filteredSummary.total_despesas)}
+              <div className="flex items-center justify-between mt-2 pt-1 border-t border-border/20">
+                <p className="text-[10px] text-muted-foreground">
+                  Cortes & Serviços
+                </p>
+                <span className="text-xs font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-lg font-mono shadow-xs">
+                  {filteredSummary.pct_servicos.toFixed(1)}%
+                </span>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
+            </div>
+
+            {/* Card Produtos Vendidos */}
+            <div className="bg-muted/30 border border-cyan-500/30 rounded-2xl p-5 relative overflow-hidden group shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <ShoppingBag size={16} className="text-cyan-400" /> Produtos
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                    <ShoppingBag size={18} />
+                  </div>
+                </div>
+                <div className="font-display font-black text-2xl text-cyan-400">
+                  {formatCurrency(filteredSummary.total_produtos)}
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-2 pt-1 border-t border-border/20">
+                <p className="text-[10px] text-muted-foreground">
+                  Venda de Produtos
+                </p>
+                <span className="text-xs font-black text-cyan-400 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-lg font-mono shadow-xs">
+                  {filteredSummary.pct_produtos.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Card Total Despesas */}
+            <div className="bg-muted/30 border border-rose-500/30 rounded-2xl p-5 relative overflow-hidden group shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <ArrowDownRight size={16} className="text-rose-400" /> Total Despesas
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                    <TrendingDown size={18} />
+                  </div>
+                </div>
+                <div className="font-display font-black text-2xl text-rose-400">
+                  {formatCurrency(filteredSummary.total_despesas)}
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
                 Saídas operacionais e custos
               </p>
             </div>
 
             {/* Card Saldo Líquido */}
-            <div className={`bg-muted/30 border rounded-2xl p-5 relative overflow-hidden group shadow-sm ${
+            <div className={`bg-muted/30 border rounded-2xl p-5 relative overflow-hidden group shadow-sm flex flex-col justify-between ${
               filteredSummary.saldo >= 0 ? "border-gold-subtle" : "border-destructive/40"
             }`}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <DollarSign size={16} className="text-primary" /> Saldo em Caixa
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  <Wallet size={18} />
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <DollarSign size={16} className="text-primary" /> Saldo em Caixa
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                    <Wallet size={18} />
+                  </div>
+                </div>
+                <div className={`font-display font-black text-2xl ${
+                  filteredSummary.saldo >= 0 ? "text-primary" : "text-rose-400"
+                }`}>
+                  {filteredSummary.saldo < 0
+                    ? `- ${formatCurrency(Math.abs(filteredSummary.saldo))}`
+                    : formatCurrency(filteredSummary.saldo)}
                 </div>
               </div>
-              <div className={`font-display font-black text-2xl ${
-                filteredSummary.saldo >= 0 ? "text-primary" : "text-rose-400"
-              }`}>
-                {filteredSummary.saldo < 0
-                  ? `- ${formatCurrency(Math.abs(filteredSummary.saldo))}`
-                  : formatCurrency(filteredSummary.saldo)}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-[10px] text-muted-foreground mt-2">
                 Balanço final do período
               </p>
             </div>
@@ -881,6 +1062,15 @@ export default function Caixa() {
                         {/* Ações */}
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
+                            {(t.id?.startsWith("caixa-sale-") || t.category === "Venda de Produtos") && (
+                              <button
+                                onClick={() => handleOpenSaleModal(t)}
+                                className="p-1.5 rounded-lg bg-gold-gradient/10 border border-gold-subtle/40 hover:bg-gold-gradient hover:text-black text-primary transition-all cursor-pointer shadow-xs"
+                                title="Ver / Editar Informações da Venda"
+                              >
+                                <ShoppingBag size={13} />
+                              </button>
+                            )}
                             <button
                               onClick={() => handleEditClick(t)}
                               className="p-1.5 rounded-lg bg-background border border-border hover:border-primary/50 text-foreground hover:text-primary transition-all cursor-pointer"
@@ -1156,6 +1346,23 @@ export default function Caixa() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE INFORMAÇÕES E EDIÇÃO DE VENDA */}
+      {isSaleModalOpen && (
+        <SaleModal
+          isOpen={isSaleModalOpen}
+          onClose={() => {
+            setIsSaleModalOpen(false)
+            setSelectedSale(null)
+            setSelectedAppointmentForSale(null)
+          }}
+          appointment={selectedAppointmentForSale}
+          existingSale={selectedSale}
+          products={products}
+          onSaveSale={handleSaveSale}
+          onDeleteSale={handleDeleteSale}
+        />
       )}
     </div>
   )

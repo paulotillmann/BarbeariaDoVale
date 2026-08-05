@@ -22,6 +22,7 @@ import {
 import Sidebar from "../components/Sidebar.jsx"
 import CEventCalendar2 from "../components/CEventCalendar2.jsx"
 import CCalendar24 from "../components/CCalendar24.jsx"
+import SaleModal from "../components/SaleModal.jsx"
 
 export default function AgendaGrid() {
   const { user, token } = useAuth()
@@ -32,6 +33,13 @@ export default function AgendaGrid() {
   const [barbers, setBarbers] = useState([])
   const [customers, setCustomers] = useState([])
   const [isRealtimeEnabled] = useState(true)
+
+  // Estados para Vendas de Produtos
+  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false)
+  const [selectedSaleAppt, setSelectedSaleAppt] = useState(null)
+  const [existingSaleData, setExistingSaleData] = useState(null)
+  const [productsList, setProductsList] = useState([])
+  const [salesList, setSalesList] = useState([])
 
   // Detecção de Dispositivo Móvel (tela < 768px) e Seleção de Barbeiro no Mobile
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false)
@@ -220,11 +228,13 @@ export default function AgendaGrid() {
       try {
         const headers = { Authorization: `Bearer ${token}` }
 
-        const [apptRes, srvRes, barbRes, custRes] = await Promise.all([
+        const [apptRes, srvRes, barbRes, custRes, prodRes, salesRes] = await Promise.all([
           fetch(`${API_URL}/api/appointments`, { headers }),
           fetch(`${API_URL}/api/services`),
           fetch(`${API_URL}/api/barbers`),
-          fetch(`${API_URL}/api/customers`, { headers })
+          fetch(`${API_URL}/api/customers`, { headers }),
+          fetch(`${API_URL}/api/products`, { headers }),
+          fetch(`${API_URL}/api/sales/all`, { headers })
         ])
 
         if (apptRes.ok) setAppointments(await apptRes.json())
@@ -246,6 +256,11 @@ export default function AgendaGrid() {
           }
         }
         if (custRes.ok) setCustomers(await custRes.json())
+        if (prodRes.ok) {
+          const prodsData = await prodRes.json()
+          if (Array.isArray(prodsData)) setProductsList(prodsData)
+        }
+        if (salesRes.ok) setSalesList(await salesRes.json())
       } catch (err) {
         console.error("Erro ao carregar dados da agenda grid:", err)
       }
@@ -253,6 +268,83 @@ export default function AgendaGrid() {
 
     fetchData()
   }, [user, token, navigate])
+
+  // Handlers para o Modal de Vendas
+  const handleOpenSaleModal = async (appt) => {
+    setSelectedSaleAppt(appt)
+    setExistingSaleData(null)
+    setIsSaleModalOpen(true)
+    try {
+      const headers = { Authorization: `Bearer ${token}` }
+      const [pRes, sRes] = await Promise.all([
+        fetch(`${API_URL}/api/products`, { headers }),
+        fetch(`${API_URL}/api/sales/appointment/${appt.id}`, { headers })
+      ])
+      if (pRes.ok) {
+        const prodsData = await pRes.json()
+        if (Array.isArray(prodsData) && prodsData.length > 0) {
+          setProductsList(prodsData)
+        }
+      }
+      if (sRes.ok) {
+        const data = await sRes.json()
+        if (data && data.id) {
+          setExistingSaleData(data)
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar venda do agendamento:", err)
+    }
+  }
+
+  const handleSaveSale = async (salePayload) => {
+    const url = salePayload.id
+      ? `${API_URL}/api/sales/${salePayload.id}`
+      : `${API_URL}/api/sales`
+    const method = salePayload.id ? "PUT" : "POST"
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(salePayload)
+    })
+
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.error || "Erro ao salvar a venda.")
+    }
+
+    // Recarregar lista de vendas e produtos
+    const [sRes, pRes] = await Promise.all([
+      fetch(`${API_URL}/api/sales/all`),
+      fetch(`${API_URL}/api/products`)
+    ])
+    if (sRes.ok) setSalesList(await sRes.json())
+    if (pRes.ok) setProductsList(await pRes.json())
+  }
+
+  const handleDeleteSale = async (saleId) => {
+    const res = await fetch(`${API_URL}/api/sales/${saleId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.error || "Erro ao excluir venda.")
+    }
+
+    // Recarregar lista de vendas e produtos
+    const [sRes, pRes] = await Promise.all([
+      fetch(`${API_URL}/api/sales/all`),
+      fetch(`${API_URL}/api/products`)
+    ])
+    if (sRes.ok) setSalesList(await sRes.json())
+    if (pRes.ok) setProductsList(await pRes.json())
+  }
 
   // Polling em tempo real
   useEffect(() => {
@@ -890,11 +982,13 @@ export default function AgendaGrid() {
             <CEventCalendar2
               barbers={displayedBarbers}
               appointments={appointments}
+              sales={salesList}
               selectedDate={selectedDate}
               isMobile={isMobile}
               onSelectSlot={handleSelectSlot}
               onCancelSlot={handleOpenCancelRangeModal}
               onSelectAppointment={handleSelectAppointment}
+              onOpenSaleModal={handleOpenSaleModal}
             />
           )
         })()}
@@ -1522,6 +1616,21 @@ export default function AgendaGrid() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE INCLUSÃO E EDIÇÃO DE VENDA */}
+      <SaleModal
+        isOpen={isSaleModalOpen}
+        onClose={() => {
+          setIsSaleModalOpen(false)
+          setSelectedSaleAppt(null)
+          setExistingSaleData(null)
+        }}
+        appointment={selectedSaleAppt}
+        existingSale={existingSaleData}
+        products={productsList}
+        onSaveSale={handleSaveSale}
+        onDeleteSale={handleDeleteSale}
+      />
     </div>
   )
 }

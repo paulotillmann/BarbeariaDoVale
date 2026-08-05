@@ -2111,6 +2111,213 @@ app.delete('/api/caixa/:id', authMiddleware, async (c) => {
   }
 });
 
+// --- Endpoints de Produtos e Vendas ---
+
+app.get('/api/products', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo, created_at, updated_at FROM products ORDER BY name ASC"
+    ).all();
+    return c.json(results);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post('/api/products', authMiddleware, async (c) => {
+  try {
+    const { name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo } = await c.req.json();
+    if (!name || !name.trim()) return c.json({ error: 'Nome do produto é obrigatório.' }, 400);
+    const id = 'prod-' + crypto.randomUUID();
+    await c.env.DB.prepare(
+      "INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, name.trim(), description || null, supplier || null, supplier_contact_name || null, supplier_contact_phone || null, Number(cost_price) || 0, Number(sale_price) || 0, Number(stock_quantity) || 0, photo || null).run();
+    return c.json({ success: true, id });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get('/api/sales/all', async (c) => {
+  try {
+    const { results: sales } = await c.env.DB.prepare("SELECT * FROM sales").all();
+    return c.json(sales);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get('/api/sales/:id', async (c) => {
+  const saleId = c.req.param('id');
+  try {
+    const sale = await c.env.DB.prepare(
+      `SELECT s.id, s.appointment_id, s.customer_id, s.sale_date, s.payment_method, s.total_amount, s.created_at,
+              COALESCE(cust.name, u.name, 'Cliente Avulso') as client_name,
+              b.id as barber_id, b.name as barber_name,
+              a.appointment_time
+       FROM sales s
+       LEFT JOIN appointments a ON s.appointment_id = a.id
+       LEFT JOIN users u ON (s.customer_id = u.id OR a.client_id = u.id)
+       LEFT JOIN customers cust ON (s.customer_id = cust.id OR a.client_id = cust.id)
+       LEFT JOIN barbers b ON a.barber_id = b.id
+       WHERE s.id = ?`
+    ).bind(saleId).first();
+    if (!sale) return c.json(null);
+    
+    const { results: items } = await c.env.DB.prepare(
+      `SELECT si.id, si.sale_id, si.product_id, si.quantity, si.unit_price, si.total_price, p.name as product_name
+       FROM sale_items si
+       LEFT JOIN products p ON si.product_id = p.id
+       WHERE si.sale_id = ?`
+    ).bind(sale.id).all();
+
+    const caixaEntry = await c.env.DB.prepare("SELECT id FROM caixa WHERE id = ?").bind('caixa-sale-' + sale.id).first();
+
+    return c.json({ ...sale, items: items || [], has_caixa: !!caixaEntry });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get('/api/sales/appointment/:appointmentId', async (c) => {
+  const appointmentId = c.req.param('appointmentId');
+  try {
+    const sale = await c.env.DB.prepare(
+      "SELECT id, appointment_id, customer_id, sale_date, payment_method, total_amount, created_at FROM sales WHERE appointment_id = ?"
+    ).bind(appointmentId).first();
+    if (!sale) return c.json(null);
+    
+    const { results: items } = await c.env.DB.prepare(
+      `SELECT si.id, si.sale_id, si.product_id, si.quantity, si.unit_price, si.total_price, p.name as product_name
+       FROM sale_items si
+       LEFT JOIN products p ON si.product_id = p.id
+       WHERE si.sale_id = ?`
+    ).bind(sale.id).all();
+
+    // Verificar se existe integração no caixa
+    const caixaEntry = await c.env.DB.prepare("SELECT id FROM caixa WHERE id = ?").bind('caixa-sale-' + sale.id).first();
+
+    return c.json({ ...sale, items, has_caixa: !!caixaEntry });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post('/api/sales', authMiddleware, async (c) => {
+  try {
+    const { appointment_id, customer_id, sale_date, payment_method, items, sync_caixa } = await c.req.json();
+    if (!payment_method || !Array.isArray(items) || items.length === 0) {
+      return c.json({ error: 'Forma de pagamento e pelo menos um item são obrigatórios.' }, 400);
+    }
+    
+    const saleId = 'sale-' + crypto.randomUUID();
+    let totalAmount = 0;
+    
+    for (const item of items) {
+      const itemTotal = Number(item.quantity) * Number(item.unit_price);
+      totalAmount += itemTotal;
+    }
+
+    const validDate = sale_date || new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await c.env.DB.prepare(
+      "INSERT INTO sales (id, appointment_id, customer_id, sale_date, payment_method, total_amount) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(saleId, appointment_id || null, customer_id || null, validDate, payment_method, totalAmount).run();
+
+    for (const item of items) {
+      const itemId = 'item-' + crypto.randomUUID();
+      const qty = Number(item.quantity);
+      const uPrice = Number(item.unit_price);
+      const tPrice = qty * uPrice;
+
+      await c.env.DB.prepare(
+        "INSERT INTO sale_items (id, sale_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(itemId, saleId, item.product_id, qty, uPrice, tPrice).run();
+    }
+
+    if (sync_caixa) {
+      const caixaId = 'caixa-sale-' + saleId;
+      const description = `Venda de Produtos (${items.length} ${items.length === 1 ? 'item' : 'itens'}) - Pagamento: ${payment_method}`;
+      let barberId = null;
+      if (appointment_id) {
+        const appt = await c.env.DB.prepare("SELECT barber_id FROM appointments WHERE id = ?").bind(appointment_id).first();
+        if (appt) barberId = appt.barber_id;
+      }
+      await c.env.DB.prepare(
+        "INSERT INTO caixa (id, type, description, amount, category, appointment_id, barber_id, date) VALUES (?, 'receita', ?, ?, 'Venda de Produtos', ?, ?, ?)"
+      ).bind(caixaId, description, totalAmount, appointment_id || null, barberId, validDate.slice(0, 10)).run();
+    }
+
+    return c.json({ success: true, saleId, totalAmount });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.put('/api/sales/:id', authMiddleware, async (c) => {
+  const saleId = c.req.param('id');
+  try {
+    const { appointment_id, customer_id, sale_date, payment_method, items, sync_caixa } = await c.req.json();
+    if (!payment_method || !Array.isArray(items) || items.length === 0) {
+      return c.json({ error: 'Forma de pagamento e pelo menos um item são obrigatórios.' }, 400);
+    }
+
+    let totalAmount = 0;
+    for (const item of items) {
+      totalAmount += Number(item.quantity) * Number(item.unit_price);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE sales SET payment_method = ?, total_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?"
+    ).bind(payment_method, totalAmount, saleId).run();
+
+    await c.env.DB.prepare("DELETE FROM sale_items WHERE sale_id = ?").bind(saleId).run();
+
+    for (const item of items) {
+      const itemId = 'item-' + crypto.randomUUID();
+      const qty = Number(item.quantity);
+      const uPrice = Number(item.unit_price);
+      const tPrice = qty * uPrice;
+
+      await c.env.DB.prepare(
+        "INSERT INTO sale_items (id, sale_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(itemId, saleId, item.product_id, qty, uPrice, tPrice).run();
+    }
+
+    const caixaId = 'caixa-sale-' + saleId;
+    await c.env.DB.prepare("DELETE FROM caixa WHERE id = ?").bind(caixaId).run();
+
+    if (sync_caixa) {
+      const description = `Venda de Produtos (${items.length} ${items.length === 1 ? 'item' : 'itens'}) - Pagamento: ${payment_method}`;
+      let barberId = null;
+      if (appointment_id) {
+        const appt = await c.env.DB.prepare("SELECT barber_id FROM appointments WHERE id = ?").bind(appointment_id).first();
+        if (appt) barberId = appt.barber_id;
+      }
+      const validDate = sale_date || new Date().toISOString().slice(0, 10);
+      await c.env.DB.prepare(
+        "INSERT INTO caixa (id, type, description, amount, category, appointment_id, barber_id, date) VALUES (?, 'receita', ?, ?, 'Venda de Produtos', ?, ?, ?)"
+      ).bind(caixaId, description, totalAmount, appointment_id || null, barberId, validDate.slice(0, 10)).run();
+    }
+
+    return c.json({ success: true, saleId, totalAmount });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.delete('/api/sales/:id', authMiddleware, async (c) => {
+  const saleId = c.req.param('id');
+  try {
+    await c.env.DB.prepare("DELETE FROM sale_items WHERE sale_id = ?").bind(saleId).run();
+    await c.env.DB.prepare("DELETE FROM sales WHERE id = ?").bind(saleId).run();
+    await c.env.DB.prepare("DELETE FROM caixa WHERE id = ?").bind('caixa-sale-' + saleId).run();
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 export default app;
 
 

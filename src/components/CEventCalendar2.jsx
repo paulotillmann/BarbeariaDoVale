@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react"
-import { Clock, User, Plus, X } from "lucide-react"
+import { Clock, User, Plus, X, ShoppingBag } from "lucide-react"
 
 /**
  * CEventCalendar2 - Componente de Grade de Agendamentos
@@ -8,11 +8,13 @@ import { Clock, User, Plus, X } from "lucide-react"
 export default function CEventCalendar2({
   barbers = [],
   appointments = [],
+  sales = [],
   selectedDate = "",
   isMobile = false,
   onSelectSlot,
   onCancelSlot,
-  onSelectAppointment
+  onSelectAppointment,
+  onOpenSaleModal
 }) {
   const scrollContainerRef = useRef(null)
   const lastMouseMoveRef = useRef(Date.now())
@@ -403,6 +405,7 @@ export default function CEventCalendar2({
                       const endHStr = String(Math.floor(endMinTotal / 60)).padStart(2, "0")
                       const endMStr = String(endMinTotal % 60).padStart(2, "0")
                       const apptEndTimeStr = `${endHStr}:${endMStr}`
+                      const apptSale = sales.find(s => String(s.appointment_id) === String(appt.id))
 
                       return (
                         <td
@@ -421,11 +424,35 @@ export default function CEventCalendar2({
                                 <span className="font-extrabold text-[12pt] truncate text-black">
                                   {appt.client_name || "Cliente"}
                                 </span>
-                                {appt.price && (
-                                  <span className="bg-black/20 text-black px-1.5 py-0.5 rounded font-mono font-black text-[10px] shrink-0">
-                                    R$ {Number(appt.price).toFixed(2)}
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {/* Botão de Venda no Card */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      onOpenSaleModal && onOpenSaleModal(appt)
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-xs cursor-pointer ${
+                                      apptSale
+                                        ? "bg-black text-white border border-emerald-500/80 hover:bg-neutral-900"
+                                        : "bg-black text-white border border-black/50 hover:bg-neutral-900"
+                                    }`}
+                                    title={
+                                      apptSale
+                                        ? `Venda registrada: R$ ${Number(apptSale.total_amount || 0).toFixed(2)} (Clique para editar)`
+                                        : "Incluir Venda de Produtos"
+                                    }
+                                  >
+                                    <ShoppingBag size={11} />
+                                    <span>{apptSale ? `R$ ${Number(apptSale.total_amount || 0).toFixed(2)}` : "+ Venda"}</span>
+                                  </button>
+
+                                  {appt.price && (
+                                    <span className="bg-black/20 text-black px-1.5 py-0.5 rounded font-mono font-black text-[10px]">
+                                      R$ {Number(appt.price).toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <div className="text-[10pt] font-bold text-black/90 truncate">
                                 {appt.service_name || appt.services?.name || "Serviço"}
