@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { LayoutDashboard, CalendarRange, Users, Scissors, Package, User, Settings, LogOut, ChevronLeft, ChevronRight, Wallet } from "lucide-react"
+import { LayoutDashboard, CalendarRange, Users, Scissors, Package, User, Settings, LogOut, ChevronLeft, ChevronRight, Wallet, FileText } from "lucide-react"
 import { useAuth } from "../context/AuthContext.jsx"
 
 export default function Sidebar() {
@@ -28,7 +28,8 @@ export default function Sidebar() {
     { id: "caixa", label: "Fluxo de Caixa", path: "/caixa", icon: <Wallet size={20} /> },
     { id: "servicos", label: "Serviços", path: "/servicos", icon: <Scissors size={20} /> },
     { id: "produtos", label: "Produtos", path: "/produtos", icon: <Package size={20} /> },
-    { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> }
+    { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> },
+    { id: "relatorios", label: "Relatórios", path: "/relatorios", icon: <FileText size={20} /> }
   ]
 
   let sidebarOptions = baseSidebarOptions
@@ -46,6 +47,7 @@ export default function Sidebar() {
   const mobileOptions = [
     { id: "agenda-barbeiros", label: "Agenda", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
     { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
+    { id: "relatorios", label: "Relatórios", path: "/relatorios", icon: <FileText size={20} /> },
     { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> },
     {
       id: "logout",

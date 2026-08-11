@@ -119,14 +119,21 @@ function formatDateTimeToBR(dateTimeStr) {
 }
 
 async function sendWhatsApp(env, phone, message) {
+  if (!phone || !message) return false;
   try {
+    let cleanPhone = String(phone).replace(/\D/g, "");
+    if (cleanPhone && cleanPhone.length >= 10 && cleanPhone.length <= 11 && !cleanPhone.startsWith("55")) {
+      cleanPhone = "55" + cleanPhone;
+    }
+    const targetPhone = cleanPhone || phone;
+
     const res = await fetch("https://abkyvggiydvigugltboe.supabase.co/functions/v1/send-whatsapp", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        phone: phone,
+        phone: targetPhone,
         message: message
       })
     });
@@ -135,7 +142,7 @@ async function sendWhatsApp(env, phone, message) {
     return res.ok;
   } catch (e) {
     console.error("Erro ao enviar WhatsApp via Edge Function:", e);
-    return true;
+    return false;
   }
 }
 
@@ -159,10 +166,10 @@ app.post('/api/auth/register', async (c) => {
   try {
     await c.env.DB.prepare(
       "INSERT INTO users (id, name, phone, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(userId, name, cleanPhone, cleanEmail, passwordHash, targetRole).run();
+    ).bind(userId, name.trim().toUpperCase(), cleanPhone, cleanEmail, passwordHash, targetRole).run();
 
-    const token = await signJWT({ id: userId, name, phone: cleanPhone, email: cleanEmail, role: targetRole }, c.env.JWT_SECRET || DEFAULT_JWT_SECRET);
-    return c.json({ token, user: { id: userId, name, phone: cleanPhone, email: cleanEmail, role: targetRole } });
+    const token = await signJWT({ id: userId, name: name.trim().toUpperCase(), phone: cleanPhone, email: cleanEmail, role: targetRole }, c.env.JWT_SECRET || DEFAULT_JWT_SECRET);
+    return c.json({ token, user: { id: userId, name: name.trim().toUpperCase(), phone: cleanPhone, email: cleanEmail, role: targetRole } });
   } catch (e) {
     if (e.message.includes("UNIQUE")) {
       return c.json({ error: 'Este número de telefone ou email já está cadastrado.' }, 400);
@@ -273,23 +280,23 @@ app.put('/api/auth/me', authMiddleware, async (c) => {
         UPDATE users 
         SET name = ?, phone = ?, email = ?, password_hash = ?
         WHERE id = ?
-      `).bind(name.trim(), cleanPhone, cleanEmail, updatePasswordHash, currentUser.id).run();
+      `).bind(name.trim().toUpperCase(), cleanPhone, cleanEmail, updatePasswordHash, currentUser.id).run();
     } else {
       await c.env.DB.prepare(`
-        UPDATE users 
+        UPDATE users
         SET name = ?, phone = ?, email = ?
         WHERE id = ?
-      `).bind(name.trim(), cleanPhone, cleanEmail, currentUser.id).run();
+      `).bind(name.trim().toUpperCase(), cleanPhone, cleanEmail, currentUser.id).run();
     }
 
     // Se o usuário atual for um barbeiro vinculado na tabela barbers, atualizamos também nome/telefone lá
     await c.env.DB.prepare(`
       UPDATE barbers SET name = ?, phone = ? WHERE user_id = ?
-    `).bind(name.trim(), phone ? phone.trim() : null, currentUser.id).run();
+    `).bind(name.trim().toUpperCase(), phone ? phone.trim() : null, currentUser.id).run();
 
     const updatedUser = {
       ...currentUser,
-      name: name.trim(),
+      name: name.trim().toUpperCase(),
       phone: cleanPhone,
       email: cleanEmail
     };
@@ -368,7 +375,7 @@ app.post('/api/services', authMiddleware, async (c) => {
     // Inserir serviço
     await c.env.DB.prepare(
       "INSERT INTO services (id, name, description, duration_minutes, price, restricted_access) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(serviceId, name, description || null, Number(duration_minutes), Number(price), isRestricted).run();
+    ).bind(serviceId, name.trim().toUpperCase(), description ? description.trim().toUpperCase() : null, Number(duration_minutes), Number(price), isRestricted).run();
 
     // Associar barbeiros
     if (Array.isArray(barber_ids) && barber_ids.length > 0) {
@@ -383,8 +390,8 @@ app.post('/api/services', authMiddleware, async (c) => {
       success: true,
       service: {
         id: serviceId,
-        name,
-        description,
+        name: name.trim().toUpperCase(),
+        description: description ? description.trim().toUpperCase() : null,
         duration_minutes,
         price,
         restricted_access: isRestricted,
@@ -425,7 +432,7 @@ app.put('/api/services/:id', authMiddleware, async (c) => {
     // Atualizar serviço
     await c.env.DB.prepare(
       "UPDATE services SET name = ?, description = ?, duration_minutes = ?, price = ?, restricted_access = ? WHERE id = ?"
-    ).bind(name, description || null, Number(duration_minutes), Number(price), isRestricted, serviceId).run();
+    ).bind(name.trim().toUpperCase(), description ? description.trim().toUpperCase() : null, Number(duration_minutes), Number(price), isRestricted, serviceId).run();
 
     // Remover associações antigas
     await c.env.DB.prepare("DELETE FROM barber_services WHERE service_id = ?").bind(serviceId).run();
@@ -443,8 +450,8 @@ app.put('/api/services/:id', authMiddleware, async (c) => {
       success: true,
       service: {
         id: serviceId,
-        name,
-        description,
+        name: name.trim().toUpperCase(),
+        description: description ? description.trim().toUpperCase() : null,
         duration_minutes,
         price,
         restricted_access: isRestricted,
@@ -532,11 +539,11 @@ app.post('/api/barbers', authMiddleware, async (c) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id,
-      name.trim(),
+      name.trim().toUpperCase(),
       phone ? phone.trim() : null,
       photo ? photo.trim() : null,
       birth_date || null,
-      specialty ? specialty.trim() : null,
+      specialty ? specialty.trim().toUpperCase() : null,
       hired_at || null,
       Number(service_commission) || 0,
       Number(product_commission) || 0,
@@ -547,11 +554,11 @@ app.post('/api/barbers', authMiddleware, async (c) => {
       success: true,
       barber: {
         id,
-        name: name.trim(),
+        name: name.trim().toUpperCase(),
         phone: phone ? phone.trim() : null,
         photo: photo ? photo.trim() : null,
         birth_date: birth_date || null,
-        specialty: specialty ? specialty.trim() : null,
+        specialty: specialty ? specialty.trim().toUpperCase() : null,
         hired_at: hired_at || null,
         service_commission: Number(service_commission) || 0,
         product_commission: Number(product_commission) || 0,
@@ -582,11 +589,11 @@ app.put('/api/barbers/:id', authMiddleware, async (c) => {
       SET name = ?, phone = ?, photo = ?, birth_date = ?, specialty = ?, hired_at = ?, service_commission = ?, product_commission = ?, user_id = ?
       WHERE id = ?
     `).bind(
-      name.trim(),
+      name.trim().toUpperCase(),
       phone ? phone.trim() : null,
       photo ? photo.trim() : null,
       birth_date || null,
-      specialty ? specialty.trim() : null,
+      specialty ? specialty.trim().toUpperCase() : null,
       hired_at || null,
       Number(service_commission) || 0,
       Number(product_commission) || 0,
@@ -598,11 +605,11 @@ app.put('/api/barbers/:id', authMiddleware, async (c) => {
       success: true,
       barber: {
         id,
-        name: name.trim(),
+        name: name.trim().toUpperCase(),
         phone: phone ? phone.trim() : null,
         photo: photo ? photo.trim() : null,
         birth_date: birth_date || null,
-        specialty: specialty ? specialty.trim() : null,
+        specialty: specialty ? specialty.trim().toUpperCase() : null,
         hired_at: hired_at || null,
         service_commission: Number(service_commission) || 0,
         product_commission: Number(product_commission) || 0,
@@ -741,7 +748,7 @@ app.post('/api/appointments/cancel-range', authMiddleware, async (c) => {
       return c.json({ error: 'Os campos barbeiro, data, horário de início e término são obrigatórios.' }, 400);
     }
 
-    const cancelReason = (reason && reason.trim()) ? reason.trim() : 'Bloqueio de Agenda';
+    const cancelReason = (reason && reason.trim()) ? reason.trim().toUpperCase() : 'BLOQUEIO DE AGENDA';
 
     const [startH, startM] = start_time.split(':').map(Number);
     const [endH, endM] = end_time.split(':').map(Number);
@@ -960,7 +967,20 @@ app.post('/api/appointments', authMiddleware, async (c) => {
 
     // Obter dados do cliente (tabela customers) e do barbeiro para notificações
     const client = await c.env.DB.prepare("SELECT name, phone FROM customers WHERE id = ?").bind(clientId).first();
-    const barber = await c.env.DB.prepare("SELECT name, phone FROM barbers WHERE id = ?").bind(barber_id).first();
+    let barber = null;
+    if (barber_id) {
+      barber = await c.env.DB.prepare(`
+        SELECT COALESCE(NULLIF(b.name, ''), u.name) as name, 
+               COALESCE(NULLIF(b.phone, ''), u.phone) as phone 
+        FROM barbers b 
+        LEFT JOIN users u ON (b.user_id = u.id OR b.id = u.id)
+        WHERE b.id = ? OR b.user_id = ? OR u.id = ?
+      `).bind(barber_id, barber_id, barber_id).first();
+
+      if (!barber) {
+        barber = await c.env.DB.prepare("SELECT name, phone FROM users WHERE id = ?").bind(barber_id).first();
+      }
+    }
 
     const servicesText = serviceNames.length > 0 ? serviceNames.join(", ") : "";
 
@@ -968,6 +988,12 @@ app.post('/api/appointments', authMiddleware, async (c) => {
     c.executionCtx.waitUntil((async () => {
       try {
         const formattedDateTime = formatDateTimeToBR(appointment_time);
+
+        // REGRA DE NEGÓCIO: Não enviar mensagem quando não for selecionado/encontrado um barbeiro/profissional
+        if (!barber_id || !barber) {
+          console.log("Agendamento sem barbeiro/profissional selecionado. Envio de WhatsApp omitido.");
+          return;
+        }
 
         // Enviar mensagem de WhatsApp ao Barbeiro
         if (barber && barber.phone && client) {
@@ -978,12 +1004,13 @@ app.post('/api/appointments', authMiddleware, async (c) => {
           ).bind(crypto.randomUUID(), appointmentId, 'confirmation', barber.phone, sentBarber ? 'sent' : 'failed').run();
         }
 
-        // Aguardar 10 segundos
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        // Aguardar 1 segundo entre disparos
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Enviar mensagem de WhatsApp de confirmação ao Cliente
         if (client && client.phone && servicesText) {
-          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${client.name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barber ? barber.name : 'Barbearia Do Vale'}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nNos vemos em breve! 👊🔥`;
+          const barberDisplayName = barber && barber.name ? barber.name : 'Barbearia Do Vale';
+          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${client.name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barberDisplayName}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nNos vemos em breve! 👊🔥`;
           const sent = await sendWhatsApp(c.env, client.phone, confirmationText);
           await c.env.DB.prepare(
             "INSERT INTO whatsapp_logs (id, appointment_id, message_type, phone, status, sent_at) VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))"
@@ -1121,9 +1148,19 @@ app.post('/api/appointments/quick', async (c) => {
       createdIds.push(appointmentId);
     }
 
-    let barber = await c.env.DB.prepare("SELECT name, phone FROM barbers WHERE id = ? OR user_id = ?").bind(barber_id, barber_id).first();
-    if (!barber) {
-      barber = await c.env.DB.prepare("SELECT name, phone FROM users WHERE id = ?").bind(barber_id).first();
+    let barber = null;
+    if (barber_id) {
+      barber = await c.env.DB.prepare(`
+        SELECT COALESCE(NULLIF(b.name, ''), u.name) as name, 
+               COALESCE(NULLIF(b.phone, ''), u.phone) as phone 
+        FROM barbers b 
+        LEFT JOIN users u ON (b.user_id = u.id OR b.id = u.id)
+        WHERE b.id = ? OR b.user_id = ? OR u.id = ?
+      `).bind(barber_id, barber_id, barber_id).first();
+
+      if (!barber) {
+        barber = await c.env.DB.prepare("SELECT name, phone FROM users WHERE id = ?").bind(barber_id).first();
+      }
     }
 
     const servicesText = serviceNames.length > 0 ? serviceNames.join(", ") : "";
@@ -1132,6 +1169,12 @@ app.post('/api/appointments/quick', async (c) => {
     c.executionCtx.waitUntil((async () => {
       try {
         const formattedDateTime = formatDateTimeToBR(appointment_time);
+
+        // REGRA DE NEGÓCIO: Não enviar mensagem quando não for selecionado/encontrado um barbeiro/profissional
+        if (!barber_id || !barber) {
+          console.log("Agendamento rápido sem barbeiro/profissional selecionado. Envio de WhatsApp omitido.");
+          return;
+        }
 
         // Enviar mensagem de WhatsApp ao Barbeiro
         if (barber && barber.phone) {
@@ -1142,12 +1185,13 @@ app.post('/api/appointments/quick', async (c) => {
           ).bind(crypto.randomUUID(), createdIds[0], 'confirmation', barber.phone, sentBarber ? 'sent' : 'failed').run();
         }
 
-        // Aguardar 10 segundos
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        // Aguardar 1 segundo entre disparos
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Enviar mensagem de WhatsApp de confirmação ao Cliente
         if (phone && servicesText) {
-          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barber.name}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\n⚠️ _Se precisar reagendar ou cancelar, por favor avise com antecedência._\n\nNos vemos em breve para dar aquele tapa no visual! 👊🔥`;
+          const barberDisplayName = barber && barber.name ? barber.name : 'Barbearia Do Vale';
+          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barberDisplayName}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\n⚠️ _Se precisar reagendar ou cancelar, por favor avise com antecedência._\n\nNos vemos em breve para dar aquele tapa no visual! 👊🔥`;
           const sent = await sendWhatsApp(c.env, phone, confirmationText);
           await c.env.DB.prepare(
             "INSERT INTO whatsapp_logs (id, appointment_id, message_type, phone, status, sent_at) VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))"
@@ -1212,7 +1256,54 @@ app.put('/api/appointments/:id/cancel', authMiddleware, async (c) => {
   }
 });
 
-// 8.1 Editar Agendamento
+// 8.1 Listar Logs de WhatsApp (Admin)
+app.get('/api/whatsapp-logs', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') {
+    return c.json({ error: 'Acesso negado. Apenas administradores podem visualizar os logs.' }, 403);
+  }
+
+  try {
+    const status = c.req.query('status') || '';
+    const messageType = c.req.query('message_type') || '';
+
+    const validStatuses = ['pending', 'sent', 'failed'];
+    const validTypes = ['confirmation', 'reminder', 'cancellation'];
+
+    let sql = `
+      SELECT wl.id, wl.appointment_id, wl.message_type, wl.phone, wl.status, wl.sent_at, wl.created_at,
+             c.name AS customer_name,
+             (SELECT GROUP_CONCAT(s.name, ', ')
+              FROM appointment_services aps
+              JOIN services s ON s.id = aps.service_id
+              WHERE aps.appointment_id = a.id) AS service_names
+      FROM whatsapp_logs wl
+      LEFT JOIN appointments a ON a.id = wl.appointment_id
+      LEFT JOIN customers c ON c.id = a.client_id
+      WHERE 1=1`;
+    const binds = [];
+
+    if (status && validStatuses.includes(status)) {
+      sql += ` AND wl.status = ?`;
+      binds.push(status);
+    }
+    if (messageType && validTypes.includes(messageType)) {
+      sql += ` AND wl.message_type = ?`;
+      binds.push(messageType);
+    }
+
+    sql += ` ORDER BY wl.created_at DESC LIMIT 200`;
+
+    const result = await c.env.DB.prepare(sql).bind(...binds).all();
+    const logs = result.results || [];
+
+    return c.json({ logs, total: logs.length });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 8.2 Editar Agendamento
 app.put('/api/appointments/:id', authMiddleware, async (c) => {
   const appointmentId = c.req.param('id');
   const user = c.get('user');
@@ -1372,9 +1463,9 @@ app.put('/api/users/:id', authMiddleware, async (c) => {
 
     await c.env.DB.prepare(
       "UPDATE users SET name = ?, phone = ?, email = ?, role = ? WHERE id = ?"
-    ).bind(name.trim(), cleanPhone, cleanEmail, newRole, targetUserId).run();
+    ).bind(name.trim().toUpperCase(), cleanPhone, cleanEmail, newRole, targetUserId).run();
 
-    return c.json({ success: true, user: { id: targetUserId, name: name.trim(), phone: cleanPhone, email: cleanEmail, role: newRole } });
+    return c.json({ success: true, user: { id: targetUserId, name: name.trim().toUpperCase(), phone: cleanPhone, email: cleanEmail, role: newRole } });
   } catch (e) {
     if (e.message.includes("UNIQUE")) {
       return c.json({ error: 'Telefone ou e-mail já cadastrados por outro usuário.' }, 400);
@@ -1741,10 +1832,10 @@ app.post('/api/products', authMiddleware, async (c) => {
       "INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).bind(
       id,
-      name.trim(),
-      description ? description.trim() : null,
-      supplier ? supplier.trim() : null,
-      supplier_contact_name ? supplier_contact_name.trim() : null,
+      name.trim().toUpperCase(),
+      description ? description.trim().toUpperCase() : null,
+      supplier ? supplier.trim().toUpperCase() : null,
+      supplier_contact_name ? supplier_contact_name.trim().toUpperCase() : null,
       supplier_contact_phone ? supplier_contact_phone.trim() : null,
       cPrice,
       sPrice,
@@ -1756,10 +1847,10 @@ app.post('/api/products', authMiddleware, async (c) => {
       success: true,
       product: {
         id,
-        name: name.trim(),
-        description: description ? description.trim() : null,
-        supplier: supplier ? supplier.trim() : null,
-        supplier_contact_name: supplier_contact_name ? supplier_contact_name.trim() : null,
+        name: name.trim().toUpperCase(),
+        description: description ? description.trim().toUpperCase() : null,
+        supplier: supplier ? supplier.trim().toUpperCase() : null,
+        supplier_contact_name: supplier_contact_name ? supplier_contact_name.trim().toUpperCase() : null,
         supplier_contact_phone: supplier_contact_phone ? supplier_contact_phone.trim() : null,
         cost_price: cPrice,
         sale_price: sPrice,
@@ -1795,10 +1886,10 @@ app.put('/api/products/:id', authMiddleware, async (c) => {
       await c.env.DB.prepare(
         "UPDATE products SET name = ?, description = ?, supplier = ?, supplier_contact_name = ?, supplier_contact_phone = ?, cost_price = ?, sale_price = ?, stock_quantity = ?, photo = ?, updated_at = datetime('now', 'localtime') WHERE id = ?"
       ).bind(
-        name.trim(),
-        description ? description.trim() : null,
-        supplier ? supplier.trim() : null,
-        supplier_contact_name ? supplier_contact_name.trim() : null,
+        name.trim().toUpperCase(),
+        description ? description.trim().toUpperCase() : null,
+        supplier ? supplier.trim().toUpperCase() : null,
+        supplier_contact_name ? supplier_contact_name.trim().toUpperCase() : null,
         supplier_contact_phone ? supplier_contact_phone.trim() : null,
         cPrice,
         sPrice,
@@ -1811,10 +1902,10 @@ app.put('/api/products/:id', authMiddleware, async (c) => {
         "INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       ).bind(
         id,
-        name.trim(),
-        description ? description.trim() : null,
-        supplier ? supplier.trim() : null,
-        supplier_contact_name ? supplier_contact_name.trim() : null,
+        name.trim().toUpperCase(),
+        description ? description.trim().toUpperCase() : null,
+        supplier ? supplier.trim().toUpperCase() : null,
+        supplier_contact_name ? supplier_contact_name.trim().toUpperCase() : null,
         supplier_contact_phone ? supplier_contact_phone.trim() : null,
         cPrice,
         sPrice,
@@ -1866,6 +1957,74 @@ app.delete('/api/products/:id', authMiddleware, async (c) => {
 
 // --- Módulo de Fluxo de Caixa (Caixa) ---
 
+// Migração: mescla agendamentos duplicados (mesmo cliente+barbeiro+horário) criados
+// pelo fluxo legado (um registro por serviço) em um único registro com appointment_services.
+async function mergeOrphanedDuplicateAppointments(db) {
+  try {
+    // Passo 1: garantir que todo agendamento com service_id tenha ao menos um registro
+    // em appointment_services (compatibilidade com dados antigos).
+    await db.prepare(`
+      INSERT OR IGNORE INTO appointment_services (appointment_id, service_id)
+      SELECT id, service_id FROM appointments
+      WHERE service_id IS NOT NULL
+        AND status != 'cancelled'
+        AND id NOT IN (SELECT DISTINCT appointment_id FROM appointment_services)
+    `).run();
+
+    // Passo 2: localizar grupos de agendamentos duplicados (mesmo cliente+barbeiro+horário)
+    const { results: groups } = await db.prepare(`
+      SELECT client_id, barber_id, appointment_time,
+             COUNT(*) as cnt,
+             GROUP_CONCAT(id, ',') as ids
+      FROM appointments
+      WHERE status != 'cancelled'
+        AND client_id != 'cust-bloqueio-sistema'
+      GROUP BY client_id, barber_id, appointment_time
+      HAVING COUNT(*) > 1
+    `).all();
+
+    if (!groups || groups.length === 0) return;
+
+    for (const group of groups) {
+      const ids = group.ids.split(',');
+
+      // Prioridade: manter o agendamento que já tem venda de produto no caixa
+      let keepId = ids[0];
+      for (const id of ids) {
+        const hasSale = await db.prepare(
+          "SELECT id FROM caixa WHERE appointment_id = ? AND id NOT LIKE 'cx-srv-%' LIMIT 1"
+        ).bind(id).first();
+        if (hasSale) { keepId = id; break; }
+      }
+
+      const toMerge = ids.filter(id => id !== keepId);
+
+      for (const mergeId of toMerge) {
+        // Mover todos os serviços do duplicado para o agendamento principal
+        const { results: services } = await db.prepare(
+          "SELECT service_id FROM appointment_services WHERE appointment_id = ?"
+        ).bind(mergeId).all();
+
+        for (const svc of services) {
+          await db.prepare(
+            "INSERT OR IGNORE INTO appointment_services (appointment_id, service_id) VALUES (?, ?)"
+          ).bind(keepId, svc.service_id).run();
+        }
+
+        // Remover os lançamentos de serviço automáticos (serão recriados com dados corretos)
+        await db.prepare("DELETE FROM caixa WHERE appointment_id = ? AND id LIKE 'cx-srv-%'").bind(mergeId).run();
+        await db.prepare("DELETE FROM caixa WHERE appointment_id = ? AND id LIKE 'cx-srv-%'").bind(keepId).run();
+
+        // Remover registros do duplicado e o agendamento em si
+        await db.prepare("DELETE FROM appointment_services WHERE appointment_id = ?").bind(mergeId).run();
+        await db.prepare("DELETE FROM appointments WHERE id = ?").bind(mergeId).run();
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao mesclar agendamentos duplicados:", e);
+  }
+}
+
 async function syncCompletedAppointmentsToCaixa(db) {
   try {
     await db.prepare(`
@@ -1883,7 +2042,12 @@ async function syncCompletedAppointmentsToCaixa(db) {
       )
     `).run();
 
-    // Selecionar agendamentos passados ou concluídos que ainda não possuem lançamento no caixa
+    // Mesclar agendamentos duplicados legados antes de sincronizar
+    await mergeOrphanedDuplicateAppointments(db);
+
+    // Selecionar agendamentos passados ou concluídos que ainda não possuem lançamento
+    // de serviço automático no caixa (entradas cx-srv-*). Entradas de venda de produtos
+    // vinculadas ao mesmo agendamento não impedem a criação do lançamento de serviço.
     const { results: eligibleAppts } = await db.prepare(`
       SELECT a.id, a.barber_id, a.appointment_time, a.status,
              COALESCE(cust.name, u.name, 'Cliente') as client_name,
@@ -1905,10 +2069,10 @@ async function syncCompletedAppointmentsToCaixa(db) {
       LEFT JOIN services s_single ON a.service_id = s_single.id
       WHERE a.status != 'cancelled'
         AND (
-          a.status = 'completed' OR 
+          a.status = 'completed' OR
           REPLACE(a.appointment_time, 'T', ' ') <= datetime('now', 'localtime')
         )
-        AND a.id NOT IN (SELECT appointment_id FROM caixa WHERE appointment_id IS NOT NULL)
+        AND a.id NOT IN (SELECT appointment_id FROM caixa WHERE appointment_id IS NOT NULL AND id LIKE 'cx-srv-%')
     `).all();
 
     let syncedCount = 0;
@@ -1946,9 +2110,10 @@ app.get('/api/caixa', authMiddleware, async (c) => {
     await syncCompletedAppointmentsToCaixa(c.env.DB);
 
     const query = `
-      SELECT c.*, b.name as barber_name
+      SELECT c.*, COALESCE(b.name, u.name) as barber_name
       FROM caixa c
-      LEFT JOIN barbers b ON c.barber_id = b.id
+      LEFT JOIN barbers b ON (c.barber_id = b.id OR c.barber_id = b.user_id)
+      LEFT JOIN users u ON (c.barber_id = u.id OR b.user_id = u.id)
       ORDER BY c.date DESC, c.created_at DESC
     `;
 
@@ -2018,7 +2183,7 @@ app.post('/api/caixa', authMiddleware, async (c) => {
 
     const id = 'cx-man-' + crypto.randomUUID();
     const formattedDate = date ? date.replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const categoryName = category && category.trim() ? category.trim() : (type === 'receita' ? 'Receita Avulsa' : 'Despesa Geral');
+    const categoryName = (category && category.trim() ? category.trim() : (type === 'receita' ? 'Receita Avulsa' : 'Despesa Geral')).toUpperCase();
 
     await c.env.DB.prepare(`
       INSERT INTO caixa (id, type, description, amount, category, barber_id, date)
@@ -2026,7 +2191,7 @@ app.post('/api/caixa', authMiddleware, async (c) => {
     `).bind(
       id,
       type,
-      description.trim(),
+      description.trim().toUpperCase(),
       Number(amount),
       categoryName,
       barber_id || null,
@@ -2038,7 +2203,7 @@ app.post('/api/caixa', authMiddleware, async (c) => {
       transaction: {
         id,
         type,
-        description: description.trim(),
+        description: description.trim().toUpperCase(),
         amount: Number(amount),
         category: categoryName,
         barber_id: barber_id || null,
@@ -2081,9 +2246,9 @@ app.put('/api/caixa/:id', authMiddleware, async (c) => {
       WHERE id = ?
     `).bind(
       type,
-      description.trim(),
+      description.trim().toUpperCase(),
       Number(amount),
-      category ? category.trim() : 'Geral',
+      category ? category.trim().toUpperCase() : 'GERAL',
       barber_id || null,
       formattedDate || null,
       id
@@ -2140,8 +2305,28 @@ app.post('/api/products', authMiddleware, async (c) => {
 
 app.get('/api/sales/all', async (c) => {
   try {
-    const { results: sales } = await c.env.DB.prepare("SELECT * FROM sales").all();
-    return c.json(sales);
+    const { results: sales } = await c.env.DB.prepare(
+      `SELECT s.id, s.appointment_id, s.customer_id, s.sale_date, s.payment_method, s.total_amount, s.created_at,
+              a.barber_id, b.name as barber_name
+       FROM sales s
+       LEFT JOIN appointments a ON s.appointment_id = a.id
+       LEFT JOIN barbers b ON a.barber_id = b.id
+       ORDER BY s.created_at DESC`
+    ).all();
+
+    if (sales && sales.length > 0) {
+      for (const sale of sales) {
+        const { results: items } = await c.env.DB.prepare(
+          `SELECT si.id, si.sale_id, si.product_id, si.quantity, si.unit_price, si.total_price, p.name as product_name
+           FROM sale_items si
+           LEFT JOIN products p ON si.product_id = p.id
+           WHERE si.sale_id = ?`
+        ).bind(sale.id).all();
+        sale.items = items || [];
+      }
+    }
+
+    return c.json(sales || []);
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }
@@ -2205,7 +2390,7 @@ app.get('/api/sales/appointment/:appointmentId', async (c) => {
 
 app.post('/api/sales', authMiddleware, async (c) => {
   try {
-    const { appointment_id, customer_id, sale_date, payment_method, items, sync_caixa } = await c.req.json();
+    const { appointment_id, customer_id, barber_id, sale_date, payment_method, items, sync_caixa } = await c.req.json();
     if (!payment_method || !Array.isArray(items) || items.length === 0) {
       return c.json({ error: 'Forma de pagamento e pelo menos um item são obrigatórios.' }, 400);
     }
@@ -2238,8 +2423,8 @@ app.post('/api/sales', authMiddleware, async (c) => {
     if (sync_caixa) {
       const caixaId = 'caixa-sale-' + saleId;
       const description = `Venda de Produtos (${items.length} ${items.length === 1 ? 'item' : 'itens'}) - Pagamento: ${payment_method}`;
-      let barberId = null;
-      if (appointment_id) {
+      let barberId = barber_id || null;
+      if (!barberId && appointment_id) {
         const appt = await c.env.DB.prepare("SELECT barber_id FROM appointments WHERE id = ?").bind(appointment_id).first();
         if (appt) barberId = appt.barber_id;
       }
@@ -2257,7 +2442,7 @@ app.post('/api/sales', authMiddleware, async (c) => {
 app.put('/api/sales/:id', authMiddleware, async (c) => {
   const saleId = c.req.param('id');
   try {
-    const { appointment_id, customer_id, sale_date, payment_method, items, sync_caixa } = await c.req.json();
+    const { appointment_id, customer_id, barber_id, sale_date, payment_method, items, sync_caixa } = await c.req.json();
     if (!payment_method || !Array.isArray(items) || items.length === 0) {
       return c.json({ error: 'Forma de pagamento e pelo menos um item são obrigatórios.' }, 400);
     }
@@ -2289,8 +2474,8 @@ app.put('/api/sales/:id', authMiddleware, async (c) => {
 
     if (sync_caixa) {
       const description = `Venda de Produtos (${items.length} ${items.length === 1 ? 'item' : 'itens'}) - Pagamento: ${payment_method}`;
-      let barberId = null;
-      if (appointment_id) {
+      let barberId = barber_id || null;
+      if (!barberId && appointment_id) {
         const appt = await c.env.DB.prepare("SELECT barber_id FROM appointments WHERE id = ?").bind(appointment_id).first();
         if (appt) barberId = appt.barber_id;
       }

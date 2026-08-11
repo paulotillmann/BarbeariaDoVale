@@ -211,6 +211,7 @@ export default function SaleModal({
         id: existingSale ? existingSale.id : null,
         appointment_id: appointment.id,
         customer_id: appointment.client_id || null,
+        barber_id: appointment.barber_id || null,
         payment_method: paymentMethod,
         items,
         sync_caixa: syncCaixa

@@ -69,10 +69,19 @@ export default function Caixa() {
   // Filtros, Busca e Paginação
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all") // 'all', 'receita', 'despesa'
-  const [periodFilter, setPeriodFilter] = useState("month") // 'month' (padrão: último mês), 'today', 'week', 'custom', 'all'
+  const [periodFilter, setPeriodFilter] = useState("month") // 'month' (padrão), 'today', 'week', 'custom', 'all'
   const [selectedBarberFilter, setSelectedBarberFilter] = useState("all") // 'all' ou barber_id
   const [isBarberDropdownOpen, setIsBarberDropdownOpen] = useState(false)
   const barberDropdownRef = useRef(null)
+
+  // Filtro de Mês e Ano Selecionados (Month Picker)
+  const initialDate = new Date()
+  const [selectedMonth, setSelectedMonth] = useState(initialDate.getMonth()) // 0-11
+  const [selectedYear, setSelectedYear] = useState(initialDate.getFullYear())
+  const [pickerYear, setPickerYear] = useState(initialDate.getFullYear())
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false)
+  const monthPickerRef = useRef(null)
+
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -425,11 +434,14 @@ export default function Caixa() {
     }
   }
 
-  // Fechar dropdown de barbeiros ao clicar fora
+  // Fechar dropdowns ao clicar fora
   useEffect(() => {
     function handleClickOutside(event) {
       if (barberDropdownRef.current && !barberDropdownRef.current.contains(event.target)) {
         setIsBarberDropdownOpen(false)
+      }
+      if (monthPickerRef.current && !monthPickerRef.current.contains(event.target)) {
+        setIsMonthPickerOpen(false)
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -453,11 +465,9 @@ export default function Caixa() {
         if (periodFilter === "today") {
           if (itemDateStr !== todayStr) return false
         } else if (periodFilter === "month") {
-          const currentMonth = todayStr.slice(0, 7) // YYYY-MM
-          const d = new Date(itemDateStr + "T00:00:00")
-          const diffDays = (now.getTime() - d.getTime()) / (1000 * 3600 * 24)
-          // Mês corrente OU últimos 31 dias
-          if (!itemDateStr.startsWith(currentMonth) && (diffDays < 0 || diffDays > 31)) {
+          const monthStr = String(selectedMonth + 1).padStart(2, "0")
+          const targetPrefix = `${selectedYear}-${monthStr}`
+          if (!itemDateStr.startsWith(targetPrefix)) {
             return false
           }
         } else if (periodFilter === "week") {
@@ -501,12 +511,12 @@ export default function Caixa() {
 
       return true
     })
-  }, [transactions, typeFilter, periodFilter, startDate, endDate, searchTerm, selectedBarberFilter, barbers])
+  }, [transactions, typeFilter, periodFilter, selectedMonth, selectedYear, startDate, endDate, searchTerm, selectedBarberFilter, barbers])
 
   // Resetar para a primeira página quando os filtros mudarem
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, typeFilter, periodFilter, startDate, endDate, selectedBarberFilter])
+  }, [searchTerm, typeFilter, periodFilter, startDate, endDate, selectedBarberFilter, selectedMonth, selectedYear])
 
   // Paginação dos lançamentos filtrados (12 itens por página)
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE) || 1
@@ -895,16 +905,104 @@ export default function Caixa() {
                 </button>
               </div>
 
-              {/* Filtro por Período */}
-              <div className="flex flex-wrap items-center bg-background border border-border rounded-xl p-1 gap-1">
+              {/* Filtro por Mês Selector (Month Picker) */}
+              <div className="relative" ref={monthPickerRef}>
                 <button
-                  onClick={() => setPeriodFilter("month")}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                    periodFilter === "month" ? "bg-primary text-background" : "text-muted-foreground hover:text-foreground"
+                  type="button"
+                  onClick={() => {
+                    setPickerYear(selectedYear)
+                    setIsMonthPickerOpen((prev) => !prev)
+                  }}
+                  className={`flex items-center justify-between gap-2.5 bg-background border text-xs font-bold py-2 px-3.5 rounded-xl transition-all cursor-pointer shadow-xs min-w-[170px] ${
+                    periodFilter === "month"
+                      ? "border-primary text-foreground bg-primary/10"
+                      : "border-border hover:border-primary/50 text-foreground"
                   }`}
                 >
-                  Último Mês
+                  <Calendar size={15} className="text-primary shrink-0" />
+                  <div className="flex items-center gap-1 font-sans">
+                    <span>01 - {new Date(selectedYear, selectedMonth + 1, 0).getDate()}</span>
+                    <span className="text-primary font-black ml-0.5">
+                      {["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][selectedMonth]}
+                    </span>
+                    <span>{selectedYear}</span>
+                  </div>
+                  <ChevronDown size={14} className={`text-muted-foreground shrink-0 transition-transform duration-200 ${isMonthPickerOpen ? "rotate-180" : ""}`} />
                 </button>
+
+                {isMonthPickerOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-[#1c1c20] border border-border/80 rounded-2xl shadow-2xl z-50 overflow-hidden animate-scale-in p-4">
+                    {/* Cabeçalho do Ano */}
+                    <div className="flex items-center justify-between text-foreground mb-3 px-1">
+                      <button
+                        type="button"
+                        onClick={() => setPickerYear((prev) => prev - 1)}
+                        className="p-1.5 hover:bg-muted/50 rounded-xl text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                        title="Ano anterior"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="text-sm font-bold tracking-wider font-mono text-foreground">{pickerYear}</span>
+                      <button
+                        type="button"
+                        onClick={() => setPickerYear((prev) => prev + 1)}
+                        className="p-1.5 hover:bg-muted/50 rounded-xl text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                        title="Próximo ano"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+
+                    <div className="border-b border-dashed border-border/40 mb-3" />
+
+                    {/* Grid de Meses (3x4) */}
+                    <div className="grid grid-cols-3 gap-2.5 mb-3">
+                      {["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"].map((mName, idx) => {
+                        const isSelected = periodFilter === "month" && selectedMonth === idx && selectedYear === pickerYear
+                        return (
+                          <button
+                            key={mName}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMonth(idx)
+                              setSelectedYear(pickerYear)
+                              setPeriodFilter("month")
+                              setIsMonthPickerOpen(false)
+                            }}
+                            className={`py-2 px-3 text-xs font-bold rounded-xl text-center transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-primary text-background font-black shadow-gold scale-105"
+                                : "bg-muted/20 hover:bg-muted/50 text-foreground/80 hover:text-foreground border border-transparent hover:border-border/40"
+                            }`}
+                          >
+                            {mName}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <div className="border-t border-dashed border-border/40 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPeriodFilter("all")
+                          setIsMonthPickerOpen(false)
+                        }}
+                        className={`w-full py-2 px-3 rounded-xl border border-dashed text-xs font-bold transition-all text-center cursor-pointer ${
+                          periodFilter === "all"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                        }`}
+                      >
+                        Todos os Períodos
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Filtros de Atalho de Período */}
+              <div className="flex items-center bg-background border border-border rounded-xl p-1 gap-1">
                 <button
                   onClick={() => setPeriodFilter("today")}
                   className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${

@@ -18,6 +18,7 @@ import AgendaGrid from "./pages/AgendaGrid.jsx"
 import ResetPassword from "./pages/ResetPassword.jsx"
 import MeuPerfil from "./pages/MeuPerfil.jsx"
 import Caixa from "./pages/Caixa.jsx"
+import Relatorios from "./pages/Relatorios.jsx"
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/servicos" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Servicos /></ProtectedRoute>} />
           <Route path="/produtos" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Produtos /></ProtectedRoute>} />
           <Route path="/profissionais" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Profissionais /></ProtectedRoute>} />
+          <Route path="/relatorios" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Relatorios /></ProtectedRoute>} />
           <Route path="/configuracoes" element={<ProtectedRoute allowedRoles={['admin']}><Configuracoes /></ProtectedRoute>} />
           <Route path="/meu-perfil" element={<ProtectedRoute allowedRoles={['admin', 'secretario', 'barber']}><MeuPerfil /></ProtectedRoute>} />
           <Route path="/agendar" element={<Agendar />} />

@@ -202,6 +202,25 @@ export default function Produtos() {
     )
   }
 
+  const formatPhoneNumber = (value) => {
+    if (!value) return ""
+    const digits = value.replace(/[^\d]/g, "")
+    if (digits.length > 11) return formatPhoneNumber(digits.slice(0, 11))
+    if (digits.length > 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+    }
+    if (digits.length > 6) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+    }
+    if (digits.length > 2) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+    }
+    if (digits.length > 0) {
+      return `(${digits}`
+    }
+    return digits
+  }
+
   const formatCurrencyInput = (value) => {
     const digits = value.replace(/\D/g, "")
     if (!digits) return ""
@@ -232,7 +251,7 @@ export default function Produtos() {
     setDescription(prod.description || "")
     setSupplier(prod.supplier || "")
     setSupplierContactName(prod.supplier_contact_name || "")
-    setSupplierContactPhone(prod.supplier_contact_phone || "")
+    setSupplierContactPhone(formatPhoneNumber(prod.supplier_contact_phone || ""))
     setPhoto(prod.photo || "")
     
     const costFormatted = prod.cost_price 
@@ -843,8 +862,9 @@ export default function Produtos() {
                   <input
                     type="text"
                     value={supplierContactPhone}
-                    onChange={(e) => setSupplierContactPhone(e.target.value)}
+                    onChange={(e) => setSupplierContactPhone(formatPhoneNumber(e.target.value))}
                     placeholder="Ex: (34) 99999-8888"
+                    maxLength={15}
                     className="w-full bg-background border border-border focus:border-primary rounded-xl py-3 px-4 text-sm text-foreground focus:outline-none transition-all"
                   />
                 </div>

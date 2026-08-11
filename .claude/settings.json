@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "d1-local": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-sqlite",
+        "C:\\BarbeariaDoVale\\backend-api\\.wrangler\\state\\v3\\d1\\miniflare-D1DatabaseObject\\aa47ff0bf2b1d6908d3cafab2a5bcd5f3b3a6ef965ce8a8042323eb7b7267306.sqlite"
+      ]
+    }
+  }
+}

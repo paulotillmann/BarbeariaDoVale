@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
-import { Settings, ShieldAlert, AlertTriangle, CheckCircle2, Pencil, Trash2 } from "lucide-react"
+import { Settings, ShieldAlert, AlertTriangle, CheckCircle2, Pencil, Trash2, MessageSquare } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
 export default function Configuracoes() {
@@ -30,6 +30,12 @@ export default function Configuracoes() {
     message: "",
     onConfirm: null
   })
+
+  // WhatsApp Logs states
+  const [whatsappLogs, setWhatsappLogs] = useState([])
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [logsStatusFilter, setLogsStatusFilter] = useState("")
+  const [logsTypeFilter, setLogsTypeFilter] = useState("")
 
   // Configurações Gerais states
   const [shopName, setShopName] = useState(() => localStorage.getItem("shopName") || "Barbearia Do Vale")
@@ -71,7 +77,53 @@ export default function Configuracoes() {
     }
 
     loadUsers()
+    loadWhatsappLogs("", "")
   }, [user, token, navigate])
+
+  const loadWhatsappLogs = async (statusFilter, typeFilter) => {
+    setLogsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (statusFilter) params.append("status", statusFilter)
+      if (typeFilter) params.append("message_type", typeFilter)
+      const res = await fetch(`${API_URL}/api/whatsapp-logs?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setWhatsappLogs(data.logs || [])
+      }
+    } catch {
+      // silently ignore log errors
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  const handleLogsStatusFilter = (val) => {
+    setLogsStatusFilter(val)
+    loadWhatsappLogs(val, logsTypeFilter)
+  }
+
+  const handleLogsTypeFilter = (val) => {
+    setLogsTypeFilter(val)
+    loadWhatsappLogs(logsStatusFilter, val)
+  }
+
+  const formatLogDate = (dateStr) => {
+    if (!dateStr) return "—"
+    const d = new Date(dateStr.replace(" ", "T"))
+    if (isNaN(d)) return dateStr
+    return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+  }
+
+  const formatLogPhone = (phone) => {
+    if (!phone) return "—"
+    const d = phone.replace(/\D/g, "")
+    if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`
+    if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`
+    return phone
+  }
 
   const showConfirm = (title, message, onConfirm) => {
     setConfirmModal({
@@ -429,6 +481,113 @@ export default function Configuracoes() {
               </div>
 
             </div>
+
+            {/* Seção: Logs de Envio WhatsApp */}
+            <div className="mt-8 pt-8 border-t border-border/60 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <MessageSquare size={16} /> Logs de Envio WhatsApp
+                </h3>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={logsStatusFilter}
+                    onChange={(e) => handleLogsStatusFilter(e.target.value)}
+                    className="bg-background border border-border focus:border-primary rounded-lg py-1.5 px-2 text-[11px] focus:outline-none transition-all cursor-pointer"
+                  >
+                    <option value="">Todos os status</option>
+                    <option value="sent">Enviado</option>
+                    <option value="failed">Falhou</option>
+                    <option value="pending">Pendente</option>
+                  </select>
+                  <select
+                    value={logsTypeFilter}
+                    onChange={(e) => handleLogsTypeFilter(e.target.value)}
+                    className="bg-background border border-border focus:border-primary rounded-lg py-1.5 px-2 text-[11px] focus:outline-none transition-all cursor-pointer"
+                  >
+                    <option value="">Todos os tipos</option>
+                    <option value="confirmation">Confirmação</option>
+                    <option value="reminder">Lembrete</option>
+                    <option value="cancellation">Cancelamento</option>
+                  </select>
+                </div>
+              </div>
+
+              {logsLoading ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2">
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-[10px] text-muted-foreground">Carregando logs...</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-border/80 bg-background/20 max-h-[350px] overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border/80 text-muted-foreground uppercase font-bold tracking-wider bg-background/45 sticky top-0 z-10">
+                        <th className="py-3 px-4">Tipo</th>
+                        <th className="py-3 px-4">Cliente</th>
+                        <th className="py-3 px-4">Telefone</th>
+                        <th className="py-3 px-4">Serviço</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4">Agendamento</th>
+                        <th className="py-3 px-4">Enviado em</th>
+                        <th className="py-3 px-4">Criado em</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {whatsappLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-8 text-center text-muted-foreground text-xs">
+                            Nenhum log encontrado.
+                          </td>
+                        </tr>
+                      ) : whatsappLogs.map((log) => (
+                        <tr key={log.id} className="border-b border-border/40 hover:bg-muted/5 transition-colors">
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              log.message_type === "confirmation"
+                                ? "bg-blue-500/15 text-blue-400"
+                                : log.message_type === "reminder"
+                                ? "bg-yellow-500/15 text-yellow-400"
+                                : "bg-red-500/15 text-red-400"
+                            }`}>
+                              {log.message_type === "confirmation" ? "Confirmação"
+                                : log.message_type === "reminder" ? "Lembrete"
+                                : "Cancelamento"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-foreground">{log.customer_name || "—"}</td>
+                          <td className="py-3 px-4 text-foreground/80">{formatLogPhone(log.phone)}</td>
+                          <td className="py-3 px-4 text-foreground/70">{log.service_names || "—"}</td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              log.status === "sent"
+                                ? "bg-green-500/15 text-green-400"
+                                : log.status === "failed"
+                                ? "bg-red-500/15 text-red-400"
+                                : "bg-yellow-500/15 text-yellow-400"
+                            }`}>
+                              {log.status === "sent" ? "✓ Enviado"
+                                : log.status === "failed" ? "✗ Falhou"
+                                : "⏳ Pendente"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-foreground/60 font-mono text-[10px]">
+                            {log.appointment_id ? `${log.appointment_id.slice(0, 8)}...` : "—"}
+                          </td>
+                          <td className="py-3 px-4 text-foreground/70">{formatLogDate(log.sent_at)}</td>
+                          <td className="py-3 px-4 text-foreground/70">{formatLogDate(log.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {whatsappLogs.length > 0 && (
+                <p className="text-[10px] text-muted-foreground text-right">
+                  {whatsappLogs.length} registro{whatsappLogs.length !== 1 ? "s" : ""} exibido{whatsappLogs.length !== 1 ? "s" : ""} (máx. 200)
+                </p>
+              )}
+            </div>
+
           </div>
         </div>
       </div>
