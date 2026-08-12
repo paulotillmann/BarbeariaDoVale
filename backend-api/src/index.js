@@ -27,10 +27,32 @@ async function hashPassword(password) {
     .join('');
 }
 
+function base64urlEncode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function base64urlDecode(str) {
+  let b64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4 !== 0) {
+    b64 += "=";
+  }
+  const binary = atob(b64);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 async function signJWT(payload, secret = DEFAULT_JWT_SECRET) {
   const header = { alg: "HS256", typ: "JWT" };
-  const encodedHeader = btoa(JSON.stringify(header)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
-  const encodedPayload = btoa(JSON.stringify(payload)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  const encodedHeader = base64urlEncode(JSON.stringify(header));
+  const encodedPayload = base64urlEncode(JSON.stringify(payload));
 
   const key = await crypto.subtle.importKey(
     "raw",
@@ -46,7 +68,12 @@ async function signJWT(payload, secret = DEFAULT_JWT_SECRET) {
     new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`)
   );
 
-  const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)))
+  let binarySig = "";
+  const sigBytes = new Uint8Array(signature);
+  for (let i = 0; i < sigBytes.byteLength; i++) {
+    binarySig += String.fromCharCode(sigBytes[i]);
+  }
+  const encodedSignature = btoa(binarySig)
     .replace(/=+$/, "")
     .replace(/\+/g, "-")
     .replace(/\//g, "_");
@@ -57,6 +84,8 @@ async function signJWT(payload, secret = DEFAULT_JWT_SECRET) {
 async function verifyJWT(token, secret = DEFAULT_JWT_SECRET) {
   try {
     const [headerB64, payloadB64, signatureB64] = token.split(".");
+    if (!headerB64 || !payloadB64 || !signatureB64) return null;
+
     const key = await crypto.subtle.importKey(
       "raw",
       new TextEncoder().encode(secret),
@@ -65,11 +94,12 @@ async function verifyJWT(token, secret = DEFAULT_JWT_SECRET) {
       ["verify"]
     );
 
-    const sigData = new Uint8Array(
-      atob(signatureB64.replace(/-/g, "+").replace(/_/g, "/"))
-        .split("")
-        .map(c => c.charCodeAt(0))
-    );
+    let b64Sig = signatureB64.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64Sig.length % 4 !== 0) {
+      b64Sig += "=";
+    }
+    const sigBinary = atob(b64Sig);
+    const sigData = Uint8Array.from(sigBinary, c => c.charCodeAt(0));
 
     const verified = await crypto.subtle.verify(
       "HMAC",
@@ -79,8 +109,8 @@ async function verifyJWT(token, secret = DEFAULT_JWT_SECRET) {
     );
 
     if (!verified) return null;
-    return JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
+    return JSON.parse(base64urlDecode(payloadB64));
+  } catch (e) {
     return null;
   }
 }
@@ -187,6 +217,10 @@ app.post('/api/auth/login', async (c) => {
 
   const keyClean = loginKey.trim();
   const keyPhoneDigits = keyClean.replace(/\D/g, "");
+  let phoneWithout55 = keyPhoneDigits;
+  if (keyPhoneDigits.startsWith("55") && keyPhoneDigits.length >= 12) {
+    phoneWithout55 = keyPhoneDigits.slice(2);
+  }
   const passwordHash = await hashPassword(password);
 
   try {
@@ -194,8 +228,18 @@ app.post('/api/auth/login', async (c) => {
       SELECT id, name, phone, email, password_hash, role 
       FROM users 
       WHERE (email IS NOT NULL AND LOWER(email) = LOWER(?)) 
-         OR (phone IS NOT NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ?)
-    `).bind(keyClean.toLowerCase(), keyPhoneDigits || 'NON_EXISTENT').first();
+         OR (phone IS NOT NULL AND (
+              REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ? OR
+              REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ? OR
+              (LENGTH(?) >= 8 AND REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') LIKE ?)
+            ))
+    `).bind(
+      keyClean.toLowerCase(),
+      keyPhoneDigits || 'NON_EXISTENT',
+      phoneWithout55 || 'NON_EXISTENT',
+      keyPhoneDigits || 'NON_EXISTENT',
+      keyPhoneDigits ? `%${keyPhoneDigits.slice(-8)}` : 'NON_EXISTENT'
+    ).first();
 
     if (!user || user.password_hash !== passwordHash) {
       return c.json({ error: 'Dados de acesso incorretos.' }, 400);
@@ -719,15 +763,8 @@ app.get('/api/appointments', authMiddleware, async (c) => {
       LEFT JOIN services s_single ON a.service_id = s_single.id
     `;
 
-    let results;
-    if (user.role === 'barber') {
-      query += " WHERE (a.barber_id = ? OR b.user_id = ?) ORDER BY a.appointment_time DESC";
-      results = (await c.env.DB.prepare(query).bind(user.id, user.id).all()).results;
-    } else {
-      // Admin e Secretário(a) veem todos os agendamentos
-      query += " ORDER BY a.appointment_time DESC";
-      results = (await c.env.DB.prepare(query).all()).results;
-    }
+    query += " ORDER BY a.appointment_time DESC";
+    const { results } = await c.env.DB.prepare(query).all();
 
     return c.json(results);
   } catch (e) {
@@ -1019,7 +1056,7 @@ app.post('/api/appointments', authMiddleware, async (c) => {
 
         // Agendar Lembrete no Durable Object
         const appointmentMs = Date.parse(appointment_time);
-        const reminderMs = appointmentMs - (2 * 60 * 60 * 1000);
+        const reminderMs = appointmentMs - (30 * 60 * 1000);
         if (reminderMs > Date.now() && client && client.phone) {
           const doId = c.env.APPOINTMENT_SCHEDULER.idFromName(appointmentId);
           const stub = c.env.APPOINTMENT_SCHEDULER.get(doId);
@@ -1140,6 +1177,10 @@ app.post('/api/appointments/quick', async (c) => {
         "INSERT INTO appointments (id, client_id, barber_id, service_id, appointment_time, status) VALUES (?, ?, ?, ?, ?, 'confirmed')"
       ).bind(appointmentId, clientId, barber_id, sId, appointment_time).run();
 
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO appointment_services (appointment_id, service_id) VALUES (?, ?)"
+      ).bind(appointmentId, sId).run();
+
       const service = await c.env.DB.prepare("SELECT name, price FROM services WHERE id = ?").bind(sId).first();
       if (service) {
         serviceNames.push(service.name);
@@ -1147,6 +1188,7 @@ app.post('/api/appointments/quick', async (c) => {
       }
       createdIds.push(appointmentId);
     }
+
 
     let barber = null;
     if (barber_id) {
@@ -1200,7 +1242,7 @@ app.post('/api/appointments/quick', async (c) => {
 
         // Agendar Lembrete
         const appointmentMs = Date.parse(appointment_time);
-        const reminderMs = appointmentMs - (2 * 60 * 60 * 1000);
+        const reminderMs = appointmentMs - (30 * 60 * 1000);
         if (reminderMs > Date.now() && phone && createdIds.length > 0) {
           const doId = c.env.APPOINTMENT_SCHEDULER.idFromName(createdIds[0]);
           const stub = c.env.APPOINTMENT_SCHEDULER.get(doId);
@@ -2529,17 +2571,24 @@ export class AppointmentScheduler extends DurableObject {
 
     try {
       const appointment = await this.env.DB.prepare(`
-        SELECT a.id, a.status, a.appointment_time, 
-               c.name as client_name, c.phone as client_phone,
-               s.name as service_name
+        SELECT a.id, a.status, a.appointment_time,
+               COALESCE(cust.name, u.name, 'Cliente') as client_name,
+               COALESCE(cust.phone, u.phone) as client_phone,
+               COALESCE(
+                 (SELECT GROUP_CONCAT(s.name, ', ') FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+                 s_single.name,
+                 'Atendimento Do Vale'
+               ) as service_name
         FROM appointments a
-        JOIN users c ON a.client_id = c.id
-        JOIN services s ON a.service_id = s.id
+        LEFT JOIN customers cust ON a.client_id = cust.id
+        LEFT JOIN users u ON a.client_id = u.id
+        LEFT JOIN services s_single ON a.service_id = s_single.id
         WHERE a.id = ?
       `).bind(appointmentId).first();
 
       if (appointment && appointment.status === 'confirmed' && appointment.client_phone) {
-        const reminderText = `⏰ *LEMBRETE DE AGENDAMENTO* ⏰\n\nOlá, *${appointment.client_name}*! Passando para te lembrar que seu horário na *Barbearia Do Vale* está chegando! 😎\n\n✂️ *Dados do atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço:* ${appointment.service_name}\n📅 *Hoje às:* ${appointment.appointment_time.split(' ')[1] || appointment.appointment_time}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nTe esperamos para dar aquele trato no visual! 👊💈`;
+        const formattedDateTime = formatDateTimeToBR(appointment.appointment_time);
+        const reminderText = `⏰ *LEMBRETE DE AGENDAMENTO* ⏰\n\nOlá, *${appointment.client_name}*! Passando para te lembrar que seu horário na *Barbearia Do Vale* está chegando! 😎\n\n✂️ *Dados do atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${appointment.service_name}\n📅 *Data/Hora:* ${formattedDateTime}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nTe esperamos para dar aquele trato no visual! 👊💈`;
         const sent = await sendWhatsApp(this.env, appointment.client_phone, reminderText);
 
         await this.env.DB.prepare(
@@ -2553,3 +2602,4 @@ export class AppointmentScheduler extends DurableObject {
     }
   }
 }
+

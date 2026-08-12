@@ -44,11 +44,23 @@ export default function Sidebar() {
 
   const currentPath = location.pathname
 
-  const mobileOptions = [
+  const mobileOptions = user?.role === 'barber' ? [
     { id: "agenda-barbeiros", label: "Agenda", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
     { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
-    { id: "relatorios", label: "Relatórios", path: "/relatorios", icon: <FileText size={20} /> },
-    { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> },
+    {
+      id: "logout",
+      label: "Sair",
+      action: () => {
+        logout()
+        navigate("/login")
+      },
+      icon: <LogOut size={20} />
+    }
+  ] : [
+    { id: "dashboard", label: "Painel", path: "/dashboard", icon: <LayoutDashboard size={20} /> },
+    { id: "agenda-barbeiros", label: "Agenda", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
+    { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
+    { id: "caixa", label: "Caixa", path: "/caixa", icon: <Wallet size={20} /> },
     {
       id: "logout",
       label: "Sair",
