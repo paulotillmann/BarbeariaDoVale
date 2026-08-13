@@ -1234,10 +1234,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* SEGUNDA LINHA DE GRÁFICOS: Produtos (40%), Serviços (40%) e Efetividade (20%) */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Gráfico 3: Produtos Mais Vendidos (40% de largura) */}
-          <div className="lg:col-span-2 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+        {/* TERCEIRA LINHA DE GRÁFICOS: Produtos Mais Vendidos e Serviços Mais Vendidos */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Gráfico 3: Produtos Mais Vendidos */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
@@ -1251,8 +1251,8 @@ export default function Dashboard() {
             <ProductsDistributionChart data={productsDistributionData} />
           </div>
 
-          {/* Gráfico 4: Distribuição dos Serviços Mais Vendidos (40% de largura) */}
-          <div className="lg:col-span-2 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+          {/* Gráfico 4: Distribuição dos Serviços Mais Vendidos */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
@@ -1265,39 +1265,12 @@ export default function Dashboard() {
             </div>
             <ServicesDistributionChart data={servicesDistributionData} />
           </div>
-
-          {/* Gráfico 5: Distribuição por Categoria (Serviços vs Produtos) */}
-          <div className="lg:col-span-1 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3 gap-2">
-              <div>
-                <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
-                  <PieChartIcon size={18} className="text-primary" /> Serviços vs Produtos
-                </h3>
-                <p className="text-xs text-muted-foreground truncate">
-                  Soma total do faturamento.
-                </p>
-              </div>
-              <div className="text-right bg-primary/10 border border-primary/20 rounded-xl px-3 py-1.5 shrink-0">
-                <span className="text-[9px] font-extrabold text-muted-foreground uppercase tracking-wider block">Soma Total</span>
-                <span className="text-xs font-black font-mono text-primary">
-                  {formatCurrency(servicesVsProductsMetrics.servicesTotal + servicesVsProductsMetrics.productsTotal)}
-                </span>
-              </div>
-            </div>
-            <ServicesVsProductsChart
-              servicesTotal={servicesVsProductsMetrics.servicesTotal}
-              productsTotal={servicesVsProductsMetrics.productsTotal}
-              servicesCount={servicesVsProductsMetrics.servicesCount}
-              productsCount={servicesVsProductsMetrics.productsCount}
-            />
-          </div>
-
         </div>
 
-        {/* FEED DE ATIVIDADES RECENTES & NAVEGAÇÃO RÁPIDA */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* QUARTA LINHA: ATIVIDADES RECENTES & SERVIÇOS VS PRODUTOS */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Atendimentos do Dia */}
-          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated">
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
                 <Clock size={18} className="text-primary" /> Próximos Atendimentos do Dia
@@ -1340,7 +1313,7 @@ export default function Dashboard() {
           </div>
 
           {/* Últimos Lançamentos do Caixa */}
-          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated">
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
                 <Wallet size={18} className="text-primary" /> Lançamentos Recentes do Caixa
@@ -1378,6 +1351,32 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Gráfico: Distribuição por Categoria (Serviços vs Produtos) */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3 gap-2">
+              <div>
+                <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
+                  <PieChartIcon size={18} className="text-primary" /> Serviços vs Produtos
+                </h3>
+                <p className="text-xs text-muted-foreground truncate">
+                  Soma total do faturamento.
+                </p>
+              </div>
+              <div className="text-right bg-primary/10 border border-primary/20 rounded-xl px-3 py-1.5 shrink-0">
+                <span className="text-[9px] font-extrabold text-muted-foreground uppercase tracking-wider block">Soma Total</span>
+                <span className="text-xs font-black font-mono text-primary">
+                  {formatCurrency(servicesVsProductsMetrics.servicesTotal + servicesVsProductsMetrics.productsTotal)}
+                </span>
+              </div>
+            </div>
+            <ServicesVsProductsChart
+              servicesTotal={servicesVsProductsMetrics.servicesTotal}
+              productsTotal={servicesVsProductsMetrics.productsTotal}
+              servicesCount={servicesVsProductsMetrics.servicesCount}
+              productsCount={servicesVsProductsMetrics.productsCount}
+            />
           </div>
         </div>
       </div>
