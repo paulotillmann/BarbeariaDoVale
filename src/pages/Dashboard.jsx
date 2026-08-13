@@ -29,6 +29,7 @@ import {
 import Sidebar from "../components/Sidebar.jsx"
 import {
   FinancialTrendChart,
+  DailyTicketTrendChart,
   BarberPerformanceChart,
   ServicesDistributionChart,
   ProductsDistributionChart,
@@ -484,6 +485,59 @@ export default function Dashboard() {
       return dayObj
     })
   }, [barbers, filteredCaixa])
+
+  // 1.5. Dados para o Gráfico do Ticket Médio Diário (Linhas Suaves: Serviços x Produtos)
+  const dailyTicketTrendData = useMemo(() => {
+    const daysMap = {}
+
+    filteredCaixa.forEach((t) => {
+      if (t.type !== "receita" || !t.date) return
+
+      const dateKey = t.date.split(" ")[0].split("T")[0] // YYYY-MM-DD
+      const dayParts = dateKey.split("-")
+      const formattedLabel = dayParts.length === 3 ? `${dayParts[2]}/${dayParts[1]}` : dateKey
+
+      if (!daysMap[dateKey]) {
+        daysMap[dateKey] = {
+          dateKey,
+          date: formattedLabel,
+          atendimentoValor: 0,
+          atendimentoQtd: 0,
+          produtosValor: 0,
+          produtosVendasQtd: 0
+        }
+      }
+
+      const val = Number(t.amount) || 0
+      const isProduto = t.category === "Venda de Produtos" || t.category === "Produto" || (t.id && String(t.id).startsWith("caixa-sale-"))
+
+      if (isProduto) {
+        daysMap[dateKey].produtosValor += val
+        daysMap[dateKey].produtosVendasQtd += 1
+      } else {
+        daysMap[dateKey].atendimentoValor += val
+        daysMap[dateKey].atendimentoQtd += 1
+      }
+    })
+
+    const sortedKeys = Object.keys(daysMap).sort()
+
+    return sortedKeys.map((k) => {
+      const d = daysMap[k]
+      const ticketServicos = d.atendimentoQtd > 0 ? d.atendimentoValor / d.atendimentoQtd : 0
+      const ticketProdutos = d.produtosVendasQtd > 0 ? d.produtosValor / d.produtosVendasQtd : 0
+
+      return {
+        date: d.date,
+        atendimentoValor: d.atendimentoValor,
+        atendimentoQtd: d.atendimentoQtd,
+        produtosValor: d.produtosValor,
+        produtosVendasQtd: d.produtosVendasQtd,
+        ticketServicos: Number(ticketServicos.toFixed(2)),
+        ticketProdutos: Number(ticketProdutos.toFixed(2))
+      }
+    })
+  }, [filteredCaixa])
 
   // 2. Dados para o Gráfico de Desempenho por Barbeiro (Bar Chart)
   const barberPerformanceData = useMemo(() => {
@@ -1103,10 +1157,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* SEÇÃO DE GRÁFICOS ANALÍTICOS (SHADCN CHART CARDS) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Gráfico 1: Fluxo Financeiro (Evolução de Receitas vs Despesas) */}
-          <div className="lg:col-span-2 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+        {/* SEÇÃO DE GRÁFICOS ANALÍTICOS: PRIMEIRA LINHA - FATURAMENTO DIÁRIO (LARGURA TOTAL) */}
+        <div className="grid grid-cols-1 gap-6">
+          {/* Gráfico 1: Fluxo Financeiro (Faturamento Diário) */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3 flex-wrap gap-2">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
@@ -1145,9 +1199,27 @@ export default function Dashboard() {
             </div>
             <FinancialTrendChart data={financialTrendData} viewMode={financialViewMode} />
           </div>
+        </div>
 
-          {/* Gráfico 2: Desempenho por Barbeiro (Bar Chart) */}
-          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+        {/* SEGUNDA LINHA DE GRÁFICOS: TICKET MÉDIO DIÁRIO (2/3) X FATURAMENTO POR BARBEIRO (1/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Gráfico 2: Ticket Médio Diário de Vendas de Produtos x Serviços Realizados (2/3 da largura) */}
+          <div className="lg:col-span-2 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3 flex-wrap gap-2">
+              <div>
+                <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
+                  <DollarSign size={18} className="text-primary" /> Ticket Médio Diário (Produtos x Serviços)
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Evolução comparativa da média gerada por vendas de produtos vs atendimentos prestados.
+                </p>
+              </div>
+            </div>
+            <DailyTicketTrendChart data={dailyTicketTrendData} />
+          </div>
+
+          {/* Gráfico 3: Desempenho por Barbeiro (1/3 da largura) */}
+          <div className="lg:col-span-1 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">

@@ -7,6 +7,8 @@ import {
   Area,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   PieChart,
   Pie,
   Cell,
@@ -210,6 +212,109 @@ export function FinancialTrendChart({ data = [], viewMode = "simplificado" }) {
             </>
           )}
         </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// Tooltip customizado para o gráfico de Ticket Médio Diário (Serviços x Produtos)
+const DailyTicketTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    const dayData = payload[0]?.payload || {}
+    return (
+      <div className="bg-[#18181b]/95 backdrop-blur-md border border-border/80 rounded-xl p-3.5 shadow-2xl text-xs space-y-2.5 min-w-[240px] z-50">
+        <div className="flex items-center justify-between border-b border-border/40 pb-2">
+          <span className="font-bold text-foreground font-mono text-sm">{label}</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ticket Médio</span>
+        </div>
+        {payload.map((entry, idx) => {
+          if (entry.value === undefined || entry.value === null) return null
+          const isServicos = entry.dataKey === "ticketServicos"
+          const count = isServicos ? dayData.atendimentoQtd : dayData.produtosVendasQtd
+          const unitLabel = isServicos ? (count === 1 ? 'atendimento' : 'atendimentos') : (count === 1 ? 'venda' : 'vendas')
+          const totalVal = isServicos ? dayData.atendimentoValor : dayData.produtosValor
+
+          return (
+            <div key={idx} className="space-y-1">
+              <div className="flex items-center justify-between font-bold gap-2" style={{ color: entry.color }}>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }}></span>
+                  <span className="truncate">{entry.name}</span>
+                </span>
+                <span className="font-mono text-sm shrink-0 font-black">{formatCurrency(entry.value)}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-4">
+                <span>Total acumulado:</span>
+                <span className="font-semibold font-mono text-foreground">{formatCurrency(totalVal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-4">
+                <span>Volume de registros:</span>
+                <span className="font-semibold font-mono text-foreground">{count || 0} {unitLabel}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+  return null
+}
+
+export function DailyTicketTrendChart({ data = [] }) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-80 flex items-center justify-center text-xs text-muted-foreground border border-dashed border-border/60 rounded-2xl bg-muted/10">
+        Nenhum registro de ticket médio no período selecionado
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-80 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 35, right: 15, left: -15, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+          <XAxis dataKey="date" stroke="#71717a" fontSize="10pt" tickLine={false} axisLine={false} />
+          <YAxis stroke="#71717a" fontSize="10pt" tickLine={false} axisLine={false} tickFormatter={(val) => `R$${val}`} />
+          <Tooltip content={<DailyTicketTooltip />} />
+          <Legend
+            iconType="circle"
+            wrapperStyle={{ fontSize: "12pt", paddingTop: "12px" }}
+            formatter={(value) => <span className="text-muted-foreground font-semibold uppercase tracking-wider text-[12pt]">{value}</span>}
+          />
+          <Line
+            type="monotone"
+            dataKey="ticketServicos"
+            name="Ticket Serviços"
+            stroke="#FADD00"
+            strokeWidth={3}
+            dot={{ r: 4, fill: "#FADD00", stroke: "#18181b", strokeWidth: 2 }}
+            activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2 }}
+          >
+            <LabelList
+              dataKey="ticketServicos"
+              position="top"
+              formatter={(val) => Number(val) > 0 ? `R$${Math.round(val)}` : ""}
+              style={{ fill: "#FADD00", fontSize: "12pt", fontWeight: "800", fontFamily: "monospace" }}
+            />
+          </Line>
+          <Line
+            type="monotone"
+            dataKey="ticketProdutos"
+            name="Ticket Produtos"
+            stroke="#ffffff"
+            strokeWidth={3}
+            dot={{ r: 4, fill: "#ffffff", stroke: "#18181b", strokeWidth: 2 }}
+            activeDot={{ r: 6, stroke: "#FADD00", strokeWidth: 2 }}
+          >
+            <LabelList
+              dataKey="ticketProdutos"
+              position="top"
+              formatter={(val) => Number(val) > 0 ? `R$${Math.round(val)}` : ""}
+              style={{ fill: "#ffffff", fontSize: "12pt", fontWeight: "800", fontFamily: "monospace" }}
+            />
+          </Line>
+        </LineChart>
       </ResponsiveContainer>
     </div>
   )

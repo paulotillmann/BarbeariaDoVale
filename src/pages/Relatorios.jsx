@@ -144,6 +144,7 @@ export default function Relatorios() {
     setSelectedBarberId("todos")
     setIsCommissionCalculated(false)
     setCommissionResults([])
+    setGeneratedNotice(false)
   }
 
   // Função para calcular a comissão dos profissionais com base nos filtros
@@ -325,29 +326,131 @@ export default function Relatorios() {
   const formatDate = (isoString) => {
     if (!isoString) return "-"
     try {
-      const parts = isoString.split("T")[0].split("-")
-      if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`
+      const cleanStr = String(isoString).trim()
+      // Detecta formato YYYY-MM-DD (com ou sem hora/espaço/T)
+      const ymdMatch = cleanStr.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/)
+      if (ymdMatch) {
+        const [, year, month, day] = ymdMatch
+        return `${day}/${month}/${year}`
       }
-      return isoString
+      // Detecta formato DD/MM/YYYY (com ou sem hora)
+      const dmyMatch = cleanStr.match(/^(\d{2})[/.-](\d{2})[/.-](\d{4})/)
+      if (dmyMatch) {
+        const [, day, month, year] = dmyMatch
+        return `${day}/${month}/${year}`
+      }
+      const d = new Date(cleanStr)
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, '0')
+        const month = String(d.getMonth() + 1).padStart(2, '0')
+        const year = d.getFullYear()
+        return `${day}/${month}/${year}`
+      }
+      return cleanStr
     } catch {
-      return isoString
+      return String(isoString)
     }
   }
 
+  const formatAppointmentDateTime = (a) => {
+    if (!a) return "-"
+    const rawStr = a.appointment_time || a.start_time || a.date_time || a.date || a.created_at || ""
+    if (!rawStr) return "-"
+
+    if (rawStr.includes("T") || rawStr.includes(" ")) {
+      const parts = rawStr.split(/[T ]/)
+      const datePart = parts[0]
+      const timePart = parts[1] ? parts[1].slice(0, 5) : (a.time || a.start_time || "")
+      const formattedDate = formatDate(datePart)
+      return timePart ? `${formattedDate} às ${timePart}` : formattedDate
+    }
+
+    const dateFormatted = formatDate(rawStr)
+    const timeStr = (a.time || a.start_time || a.horario || "").slice(0, 5)
+    return timeStr ? `${dateFormatted} às ${timeStr}` : dateFormatted
+  }
+
   const handlePrint = () => {
+    const printableArea = document.getElementById("printable-area")
+    if (!printableArea) {
+      window.print()
+      return
+    }
+
+    // 1. Remove container de impressões anteriores se existir
+    const oldRoot = document.getElementById("brute-force-print-root")
+    if (oldRoot) oldRoot.remove()
+
+    // 2. Cria o contêiner isolado diretamente no <body> fora da árvore do React/modal
+    const printRoot = document.createElement("div")
+    printRoot.id = "brute-force-print-root"
+    printRoot.innerHTML = printableArea.outerHTML
+
+    document.body.appendChild(printRoot)
+    document.body.classList.add("is-printing-active")
+
+    const cleanup = () => {
+      document.body.classList.remove("is-printing-active")
+      if (printRoot && printRoot.parentNode) {
+        printRoot.parentNode.removeChild(printRoot)
+      }
+    }
+
+    window.addEventListener("afterprint", cleanup, { once: true })
     window.print()
+    setTimeout(cleanup, 1200)
+  }
+
+  // Estado para notificar a geração dos dados
+  const [generatedNotice, setGeneratedNotice] = useState(false)
+
+  const handleGenerateReportData = () => {
+    if (activeReport === "comissao_profissional") {
+      handleCalculateCommissions()
+    } else {
+      setGeneratedNotice(true)
+      setTimeout(() => setGeneratedNotice(false), 3000)
+    }
+  }
+
+  // Filtragem de dados para o relatório de Fluxo de Caixa
+  const getFilteredCashFlow = () => {
+    return cashFlowData.filter(item => {
+      const rawDate = item.created_at || item.date || ""
+      const itemDateStr = rawDate.split(" ")[0].split("T")[0]
+
+      if (startDate && itemDateStr < startDate) return false
+      if (endDate && itemDateStr > endDate) return false
+
+      if (selectedBarberId !== "todos") {
+        const itemBarberId = String(item.barber_id || "")
+        if (itemBarberId !== String(selectedBarberId)) return false
+      }
+
+      if (searchFilter) {
+        const search = searchFilter.toLowerCase()
+        const desc = (item.description || item.descricao || "").toLowerCase()
+        const method = (item.payment_method || item.formaPgto || "").toLowerCase()
+        const cat = (item.category || "").toLowerCase()
+        if (!desc.includes(search) && !method.includes(search) && !cat.includes(search)) return false
+      }
+
+      return true
+    })
   }
 
   // Filtragem de dados para os outros relatórios
   const getFilteredAppointments = () => {
     return appointmentsData.filter(item => {
-      if (startDate && new Date(item.date || item.created_at) < new Date(startDate)) return false
-      if (endDate && new Date(item.date || item.created_at) > new Date(endDate + 'T23:59:59')) return false
+      const rawDate = item.appointment_time || item.start_time || item.date || item.created_at || ""
+      const itemDateStr = rawDate.split(" ")[0].split("T")[0]
+
+      if (startDate && itemDateStr && itemDateStr < startDate) return false
+      if (endDate && itemDateStr && itemDateStr > endDate) return false
       if (selectedBarberId !== "todos" && String(item.barber_id || item.barberId) !== String(selectedBarberId)) return false
       if (searchFilter) {
         const search = searchFilter.toLowerCase()
-        const clientName = (item.customer_name || item.clientName || "").toLowerCase()
+        const clientName = (item.customer_name || item.client_name || item.clientName || "").toLowerCase()
         const barberName = (item.barber_name || item.barberName || "").toLowerCase()
         const serviceName = (item.service_name || item.serviceName || "").toLowerCase()
         if (!clientName.includes(search) && !barberName.includes(search) && !serviceName.includes(search)) return false
@@ -407,78 +510,114 @@ export default function Relatorios() {
 
           @media print {
             @page {
-              size: portrait;
-              margin: 8mm 8mm 8mm 8mm;
+              size: A4 portrait;
+              margin: 5mm 5mm 5mm 5mm;
             }
-            html, body {
-              background: #ffffff !important;
-              color: #000000 !important;
-              height: auto !important;
-              min-height: 100% !important;
-              overflow: visible !important;
-            }
-            body * {
-              visibility: hidden !important;
-            }
-            #printable-area, #printable-area * {
-              visibility: visible !important;
-            }
-            /* Desativa restrições de contêineres e modais que cortam o relatório */
-            .fixed, .overflow-y-auto, .overflow-hidden, div[class*="max-h-"] {
-              position: static !important;
-              max-height: none !important;
-              height: auto !important;
-              overflow: visible !important;
-              background: transparent !important;
-              border: none !important;
-              box-shadow: none !important;
-              padding: 0 !important;
-              margin: 0 !important;
-            }
-            #printable-area {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 100% !important;
-              height: auto !important;
-              max-height: none !important;
-              overflow: visible !important;
-              color: #000000 !important;
-              background: #ffffff !important;
-              padding: 0 !important;
-              margin: 0 !important;
-            }
-            #printable-area *, #printable-area span, #printable-area p, #printable-area h1, #printable-area h2, #printable-area td, #printable-area th {
-              color: #000000 !important;
-            }
-            .no-print {
+
+            /* FORÇA BRUTA: Esconde ABSOLUTAMENTE TUDO no body exceto o contêiner isolado de impressão */
+            body.is-printing-active > *:not(#brute-force-print-root) {
               display: none !important;
             }
+
+            body.is-printing-active {
+              background: #ffffff !important;
+              color: #000000 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              height: auto !important;
+              min-height: 0 !important;
+              overflow: visible !important;
+            }
+
+            #brute-force-print-root {
+              display: block !important;
+              position: static !important;
+              width: 100% !important;
+              height: auto !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+            }
+
+            #brute-force-print-root #printable-area {
+              display: block !important;
+              position: static !important;
+              width: 100% !important;
+              height: auto !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              box-shadow: none !important;
+              border: none !important;
+              page-break-before: avoid !important;
+            }
+
+            #brute-force-print-root *,
+            #brute-force-print-root span,
+            #brute-force-print-root p,
+            #brute-force-print-root h1,
+            #brute-force-print-root h2,
+            #brute-force-print-root td,
+            #brute-force-print-root th {
+              color: #000000 !important;
+            }
+
+            .no-print, .no-print * {
+              display: none !important;
+            }
+
             .print-table {
               width: 100% !important;
               border-collapse: collapse !important;
               table-layout: auto !important;
+              page-break-inside: auto !important;
             }
+
+            .print-table thead {
+              display: table-header-group !important;
+            }
+
+            .print-table tfoot {
+              display: table-footer-group !important;
+            }
+
+            .print-table tr {
+              page-break-inside: avoid !important;
+              page-break-after: auto !important;
+            }
+
             .print-table th, .print-table td {
               border: 1px solid #cbd5e1 !important;
-              padding: 5px 6px !important;
+              padding: 3px 3px !important;
               text-align: left !important;
               color: #000000 !important;
-              font-size: 8.5pt !important;
-              word-break: break-word !important;
-              overflow-wrap: break-word !important;
+              font-size: 7.5pt !important;
             }
+
             .print-table th {
               background-color: #f1f5f9 !important;
               font-weight: bold !important;
               text-transform: uppercase !important;
-              font-size: 8pt !important;
+              font-size: 7pt !important;
+              white-space: nowrap !important;
             }
+
+            .print-table td.whitespace-nowrap,
+            .print-table td.text-right,
+            .print-table td.text-center,
+            .print-table th.whitespace-nowrap,
+            .print-table tfoot td {
+              white-space: nowrap !important;
+              word-break: normal !important;
+              overflow-wrap: normal !important;
+            }
+
             .print-table tfoot td {
               background-color: #f1f5f9 !important;
               font-weight: bold !important;
               border-top: 2px solid #000000 !important;
-              font-size: 9pt !important;
+              font-size: 8pt !important;
             }
           }
         `}
@@ -634,7 +773,7 @@ export default function Relatorios() {
                 </>
               )}
 
-              {(activeReport === "comissao_profissional" || activeReport === "agendamentos") && (
+              {(activeReport === "comissao_profissional" || activeReport === "agendamentos" || activeReport === "fluxo_caixa") && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Profissional:</span>
                   <select
@@ -653,16 +792,14 @@ export default function Relatorios() {
                 </div>
               )}
 
-              {/* Botão GERAR DADOS exclusivo do relatório de Comissão do Profissional */}
-              {activeReport === "comissao_profissional" && (
-                <button
-                  type="button"
-                  onClick={handleCalculateCommissions}
-                  className="inline-flex items-center justify-center gap-2 bg-gold-gradient text-primary-foreground font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider shadow-gold hover:shadow-gold-lg hover:scale-102 transition-all cursor-pointer ml-auto"
-                >
-                  <Calculator size={15} /> Gerar Dados
-                </button>
-              )}
+              {/* Botão GERAR DADOS em todos os relatórios */}
+              <button
+                type="button"
+                onClick={handleGenerateReportData}
+                className="inline-flex items-center justify-center gap-2 bg-gold-gradient text-primary-foreground font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider shadow-gold hover:shadow-gold-lg hover:scale-102 transition-all cursor-pointer ml-auto"
+              >
+                <Calculator size={15} /> Gerar Dados
+              </button>
             </div>
 
             {/* Modal Body / Report Preview */}
@@ -686,7 +823,6 @@ export default function Relatorios() {
                     <div className="text-right text-[9px] text-muted-foreground print:text-gray-700 space-y-0.5 font-mono shrink-0">
                       <p><strong>Emissão:</strong> {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                       <p><strong>Responsável:</strong> {user.name}</p>
-                      <p><strong>Página:</strong> 1 de 1</p>
                     </div>
                   </div>
 
@@ -737,6 +873,13 @@ export default function Relatorios() {
                             ))
                           )}
                         </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-primary/40 bg-primary/10 font-bold text-xs">
+                            <td colSpan="5" className="p-3 text-foreground font-bold uppercase tracking-wider">
+                              Total de Clientes Cadastrados: {getFilteredCustomers().length} Cliente(s)
+                            </td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   </div>
@@ -745,22 +888,22 @@ export default function Relatorios() {
                 {/* 2. RELATÓRIO DE PRODUTOS */}
                 {activeReport === "produtos" && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 no-print">
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total Itens em Estoque</span>
-                        <p className="text-xl font-bold text-primary mt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Total Itens em Estoque</span>
+                        <p className="text-xl font-bold text-primary print:text-black mt-1">
                           {getFilteredProducts().reduce((acc, p) => acc + (Number(p.quantity || p.stock || 0)), 0)} unidades
                         </p>
                       </div>
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor Total de Custo</span>
-                        <p className="text-xl font-bold text-foreground mt-1">
+                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Valor Total de Custo</span>
+                        <p className="text-xl font-bold text-foreground print:text-black mt-1">
                           {formatCurrency(getFilteredProducts().reduce((acc, p) => acc + ((Number(p.cost_price || p.costPrice || 0)) * Number(p.quantity || p.stock || 0)), 0))}
                         </p>
                       </div>
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor Total em Venda</span>
-                        <p className="text-xl font-bold text-emerald-400 mt-1">
+                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Valor Total em Venda</span>
+                        <p className="text-xl font-bold text-emerald-400 print:text-black mt-1">
                           {formatCurrency(getFilteredProducts().reduce((acc, p) => acc + ((Number(p.price || 0)) * Number(p.quantity || p.stock || 0)), 0))}
                         </p>
                       </div>
@@ -803,82 +946,123 @@ export default function Relatorios() {
                             })
                           )}
                         </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-primary/40 bg-primary/10 font-bold text-xs">
+                            <td colSpan="2" className="p-3 uppercase tracking-wider text-foreground font-black">Totais Gerais em Estoque</td>
+                            <td className="p-3 text-center text-foreground font-bold">{getFilteredProducts().reduce((acc, p) => acc + (Number(p.quantity || p.stock || 0)), 0)} un.</td>
+                            <td className="p-3 text-right text-foreground">{formatCurrency(getFilteredProducts().reduce((acc, p) => acc + ((Number(p.cost_price || p.costPrice || 0)) * Number(p.quantity || p.stock || 0)), 0))}</td>
+                            <td className="p-3 text-right text-muted-foreground">-</td>
+                            <td className="p-3 text-right text-emerald-400 font-black">{formatCurrency(getFilteredProducts().reduce((acc, p) => acc + ((Number(p.price || 0)) * Number(p.quantity || p.stock || 0)), 0))}</td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   </div>
                 )}
 
                 {/* 3. RELATÓRIO DE FLUXO DE CAIXA */}
-                {activeReport === "fluxo_caixa" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 no-print">
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-green-400">Total de Entradas</span>
-                        <p className="text-xl font-bold text-green-400 mt-1">
-                          {formatCurrency(cashFlowData.filter(i => (i.type || i.tipo) === 'entrada' || Number(i.amount || i.valor) > 0).reduce((acc, i) => acc + Math.abs(Number(i.amount || i.valor || 0)), 0))}
-                        </p>
-                      </div>
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Total de Saídas</span>
-                        <p className="text-xl font-bold text-rose-400 mt-1">
-                          {formatCurrency(cashFlowData.filter(i => (i.type || i.tipo) === 'saida' || Number(i.amount || i.valor) < 0).reduce((acc, i) => acc + Math.abs(Number(i.amount || i.valor || 0)), 0))}
-                        </p>
-                      </div>
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Saldo Consolidado</span>
-                        <p className="text-xl font-bold text-primary mt-1">
-                          {formatCurrency(cashFlowData.reduce((acc, i) => {
-                            const val = Number(i.amount || i.valor || 0)
-                            const isExpense = (i.type || i.tipo) === 'saida'
-                            return acc + (isExpense ? -Math.abs(val) : Math.abs(val))
-                          }, 0))}
-                        </p>
-                      </div>
-                    </div>
+                {activeReport === "fluxo_caixa" && (() => {
+                  const filteredCashFlow = getFilteredCashFlow()
+                  const totalEntradas = filteredCashFlow
+                    .filter(i => (i.type || i.tipo) === 'entrada' || (i.type || i.tipo) === 'receita' || Number(i.amount || i.valor) > 0)
+                    .reduce((acc, i) => acc + Math.abs(Number(i.amount || i.valor || 0)), 0)
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs border-collapse print-table">
-                        <thead>
-                          <tr className="border-b border-border/80 bg-muted/40 text-muted-foreground font-semibold">
-                            <th className="p-3">Data/Hora</th>
-                            <th className="p-3">Descrição da Movimentação</th>
-                            <th className="p-3">Forma Pgto</th>
-                            <th className="p-3 text-center">Tipo</th>
-                            <th className="p-3 text-right">Valor (R$)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/40">
-                          {cashFlowData.length === 0 ? (
-                            <tr>
-                              <td colSpan="5" className="p-6 text-center text-muted-foreground">
-                                Nenhuma movimentação financeira registrada no período.
+                  const totalSaidas = filteredCashFlow
+                    .filter(i => (i.type || i.tipo) === 'saida' || (i.type || i.tipo) === 'despesa' || Number(i.amount || i.valor) < 0)
+                    .reduce((acc, i) => acc + Math.abs(Number(i.amount || i.valor || 0)), 0)
+
+                  const saldoConsolidado = totalEntradas - totalSaidas
+
+                  return (
+                    <div className="space-y-4">
+                      {generatedNotice && (
+                        <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold rounded-xl p-3 shadow-xs animate-fade-in no-print">
+                          <CheckCircle2 size={16} className="shrink-0 text-green-400" />
+                          <span>Relatório de Fluxo de Caixa gerado com sucesso para os filtros selecionados!</span>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-green-400 print:text-black">Total de Entradas</span>
+                          <p className="text-xl font-bold text-green-400 print:text-black mt-1">
+                            {formatCurrency(totalEntradas)}
+                          </p>
+                        </div>
+                        <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 print:text-black">Total de Saídas</span>
+                          <p className="text-xl font-bold text-rose-400 print:text-black mt-1">
+                            {formatCurrency(totalSaidas)}
+                          </p>
+                        </div>
+                        <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-primary print:text-black">Saldo Consolidado</span>
+                          <p className="text-xl font-bold text-primary print:text-black mt-1">
+                            {formatCurrency(saldoConsolidado)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse print-table">
+                          <thead>
+                            <tr className="border-b border-border/80 bg-muted/40 text-muted-foreground font-semibold">
+                              <th className="p-3">Data/Hora</th>
+                              <th className="p-3">Descrição da Movimentação</th>
+                              <th className="p-3">Forma Pgto</th>
+                              <th className="p-3 text-center">Tipo</th>
+                              <th className="p-3 text-right">Valor (R$)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/40">
+                            {filteredCashFlow.length === 0 ? (
+                              <tr>
+                                <td colSpan="5" className="p-6 text-center text-muted-foreground">
+                                  Nenhuma movimentação financeira registrada para os filtros selecionados.
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredCashFlow.map((item, idx) => {
+                                const isExpense = (item.type || item.tipo) === 'saida' || (item.type || item.tipo) === 'despesa' || Number(item.amount || item.valor) < 0
+                                return (
+                                  <tr key={item.id || idx} className="hover:bg-muted/20">
+                                    <td className="p-3 text-muted-foreground">{formatDate(item.created_at || item.date)}</td>
+                                    <td className="p-3 font-semibold text-foreground">{item.description || item.descricao || "Movimentação de Caixa"}</td>
+                                    <td className="p-3 text-muted-foreground">{item.payment_method || item.formaPgto || "Dinheiro/Pix"}</td>
+                                    <td className="p-3 text-center font-bold">
+                                      <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider ${isExpense ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
+                                        {isExpense ? 'Saída' : 'Entrada'}
+                                      </span>
+                                    </td>
+                                    <td className={`p-3 text-right font-bold ${isExpense ? 'text-rose-400' : 'text-green-400'}`}>
+                                      {isExpense ? '-' : '+'}{formatCurrency(Math.abs(Number(item.amount || item.valor || 0)))}
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-green-500/40 bg-green-500/10 font-bold text-xs">
+                              <td colSpan="4" className="p-3 uppercase tracking-wider text-green-400 font-bold">Total de Entradas (Receitas)</td>
+                              <td className="p-3 text-right text-green-400 font-black">+{formatCurrency(totalEntradas)}</td>
+                            </tr>
+                            <tr className="border-t border-rose-500/30 bg-rose-500/10 font-bold text-xs">
+                              <td colSpan="4" className="p-3 uppercase tracking-wider text-rose-400 font-bold">Total de Saídas (Despesas)</td>
+                              <td className="p-3 text-right text-rose-400 font-black">-{formatCurrency(totalSaidas)}</td>
+                            </tr>
+                            <tr className="border-t-2 border-primary/60 bg-primary/15 font-bold text-xs">
+                              <td colSpan="4" className="p-3 uppercase tracking-wider text-foreground font-black">Saldo Consolidado do Caixa</td>
+                              <td className={`p-3 text-right font-black ${saldoConsolidado >= 0 ? 'text-primary' : 'text-rose-400'}`}>
+                                {formatCurrency(saldoConsolidado)}
                               </td>
                             </tr>
-                          ) : (
-                            cashFlowData.map((item, idx) => {
-                              const isExpense = (item.type || item.tipo) === 'saida' || Number(item.amount || item.valor) < 0
-                              return (
-                                <tr key={item.id || idx} className="hover:bg-muted/20">
-                                  <td className="p-3 text-muted-foreground">{formatDate(item.created_at || item.date)}</td>
-                                  <td className="p-3 font-semibold text-foreground">{item.description || item.descricao || "Movimentação de Caixa"}</td>
-                                  <td className="p-3 text-muted-foreground">{item.payment_method || item.formaPgto || "Dinheiro/Pix"}</td>
-                                  <td className="p-3 text-center font-bold">
-                                    <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider ${isExpense ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
-                                      {isExpense ? 'Saída' : 'Entrada'}
-                                    </span>
-                                  </td>
-                                  <td className={`p-3 text-right font-bold ${isExpense ? 'text-rose-400' : 'text-green-400'}`}>
-                                    {isExpense ? '-' : '+'}{formatCurrency(Math.abs(Number(item.amount || item.valor || 0)))}
-                                  </td>
-                                </tr>
-                              )
-                            })
-                          )}
-                        </tbody>
-                      </table>
+                          </tfoot>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* 4. RELATÓRIO DE COMISSÃO DO PROFISSIONAL (REFORMULADO) */}
                 {activeReport === "comissao_profissional" && (
@@ -903,16 +1087,16 @@ export default function Relatorios() {
                           <table className="w-full text-left text-xs border-collapse print-table">
                             <thead>
                               <tr className="border-b border-border/80 bg-muted/40 text-muted-foreground font-semibold">
-                                <th className="p-3">Profissional</th>
-                                <th className="p-3 text-center">Qtd. Serv.</th>
-                                <th className="p-3 text-right">Total Serv. (R$)</th>
-                                <th className="p-3 text-right">% Com. Serv.</th>
-                                <th className="p-3 text-right">Com. Serv. (R$)</th>
-                                <th className="p-3 text-center">Qtd. Prod.</th>
-                                <th className="p-3 text-right">Total Prod. (R$)</th>
-                                <th className="p-3 text-right">% Com. Prod.</th>
-                                <th className="p-3 text-right">Com. Prod. (R$)</th>
-                                <th className="p-3 text-right text-primary font-bold">Total Comissão (R$)</th>
+                                <th className="p-3 whitespace-nowrap">Profissional</th>
+                                <th className="p-3 text-center whitespace-nowrap">Qtd. Serv.</th>
+                                <th className="p-3 text-right whitespace-nowrap">Total Serv.</th>
+                                <th className="p-3 text-right whitespace-nowrap">% Serv.</th>
+                                <th className="p-3 text-right whitespace-nowrap">Com. Serv.</th>
+                                <th className="p-3 text-center whitespace-nowrap">Qtd. Prod.</th>
+                                <th className="p-3 text-right whitespace-nowrap">Total Prod.</th>
+                                <th className="p-3 text-right whitespace-nowrap">% Prod.</th>
+                                <th className="p-3 text-right whitespace-nowrap">Com. Prod.</th>
+                                <th className="p-3 text-right text-primary font-bold whitespace-nowrap">Total Com.</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/40">
@@ -925,19 +1109,19 @@ export default function Relatorios() {
                               ) : (
                                 commissionResults.map((item) => (
                                   <tr key={item.barberId} className="hover:bg-muted/20">
-                                    <td className="p-3 font-semibold text-foreground flex items-center gap-2">
+                                    <td className="p-3 font-semibold text-foreground flex items-center gap-2 whitespace-nowrap">
                                       <Scissors size={14} className="text-primary shrink-0 no-print" />
                                       <span>{item.barberName}</span>
                                     </td>
-                                    <td className="p-3 text-center font-bold text-foreground">{item.serviceCount}</td>
-                                    <td className="p-3 text-right text-muted-foreground">{formatCurrency(item.serviceTotal)}</td>
-                                    <td className="p-3 text-right text-primary font-medium">{item.serviceCommPct}%</td>
-                                    <td className="p-3 text-right font-bold text-foreground">{formatCurrency(item.serviceCommValue)}</td>
-                                    <td className="p-3 text-center font-bold text-foreground">{item.productCount}</td>
-                                    <td className="p-3 text-right text-muted-foreground">{formatCurrency(item.productTotal)}</td>
-                                    <td className="p-3 text-right text-primary font-medium">{item.productCommPct}%</td>
-                                    <td className="p-3 text-right font-bold text-foreground">{formatCurrency(item.productCommValue)}</td>
-                                    <td className="p-3 text-right font-black text-primary text-sm">{formatCurrency(item.totalCommission)}</td>
+                                    <td className="p-3 text-center font-bold text-foreground whitespace-nowrap">{item.serviceCount}</td>
+                                    <td className="p-3 text-right text-muted-foreground whitespace-nowrap">{formatCurrency(item.serviceTotal)}</td>
+                                    <td className="p-3 text-right text-primary font-medium whitespace-nowrap">{item.serviceCommPct}%</td>
+                                    <td className="p-3 text-right font-bold text-foreground whitespace-nowrap">{formatCurrency(item.serviceCommValue)}</td>
+                                    <td className="p-3 text-center font-bold text-foreground whitespace-nowrap">{item.productCount}</td>
+                                    <td className="p-3 text-right text-muted-foreground whitespace-nowrap">{formatCurrency(item.productTotal)}</td>
+                                    <td className="p-3 text-right text-primary font-medium whitespace-nowrap">{item.productCommPct}%</td>
+                                    <td className="p-3 text-right font-bold text-foreground whitespace-nowrap">{formatCurrency(item.productCommValue)}</td>
+                                    <td className="p-3 text-right font-black text-primary text-sm whitespace-nowrap">{formatCurrency(item.totalCommission)}</td>
                                   </tr>
                                 ))
                               )}
@@ -947,16 +1131,16 @@ export default function Relatorios() {
                               return (
                                 <tfoot>
                                   <tr className="border-t-2 border-primary/40 bg-primary/10 font-bold text-xs">
-                                    <td className="p-3 uppercase tracking-wider text-foreground">Totais Gerais</td>
-                                    <td className="p-3 text-center text-foreground">{totals.serviceCount}</td>
-                                    <td className="p-3 text-right text-foreground">{formatCurrency(totals.serviceTotal)}</td>
-                                    <td className="p-3 text-right text-muted-foreground">-</td>
-                                    <td className="p-3 text-right text-foreground">{formatCurrency(totals.serviceCommValue)}</td>
-                                    <td className="p-3 text-center text-foreground">{totals.productCount}</td>
-                                    <td className="p-3 text-right text-foreground">{formatCurrency(totals.productTotal)}</td>
-                                    <td className="p-3 text-right text-muted-foreground">-</td>
-                                    <td className="p-3 text-right text-foreground">{formatCurrency(totals.productCommValue)}</td>
-                                    <td className="p-3 text-right text-primary text-sm font-black">{formatCurrency(totals.totalCommission)}</td>
+                                    <td className="p-3 uppercase tracking-wider text-foreground whitespace-nowrap">Totais Gerais</td>
+                                    <td className="p-3 text-center text-foreground whitespace-nowrap">{totals.serviceCount}</td>
+                                    <td className="p-3 text-right text-foreground whitespace-nowrap">{formatCurrency(totals.serviceTotal)}</td>
+                                    <td className="p-3 text-right text-muted-foreground whitespace-nowrap">-</td>
+                                    <td className="p-3 text-right text-foreground whitespace-nowrap">{formatCurrency(totals.serviceCommValue)}</td>
+                                    <td className="p-3 text-center text-foreground whitespace-nowrap">{totals.productCount}</td>
+                                    <td className="p-3 text-right text-foreground whitespace-nowrap">{formatCurrency(totals.productTotal)}</td>
+                                    <td className="p-3 text-right text-muted-foreground whitespace-nowrap">-</td>
+                                    <td className="p-3 text-right text-foreground whitespace-nowrap">{formatCurrency(totals.productCommValue)}</td>
+                                    <td className="p-3 text-right text-primary text-sm font-black whitespace-nowrap">{formatCurrency(totals.totalCommission)}</td>
                                   </tr>
                                 </tfoot>
                               )
@@ -971,22 +1155,22 @@ export default function Relatorios() {
                 {/* 5. RELATÓRIO DE FATURAMENTO */}
                 {activeReport === "faturamento" && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 no-print">
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Faturamento em Serviços</span>
-                        <p className="text-xl font-bold text-primary mt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Faturamento em Serviços</span>
+                        <p className="text-xl font-bold text-primary print:text-black mt-1">
                           {formatCurrency(getFilteredAppointments().reduce((acc, a) => acc + getAppointmentPrice(a), 0))}
                         </p>
                       </div>
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Faturamento em Produtos</span>
-                        <p className="text-xl font-bold text-foreground mt-1">
+                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Faturamento em Produtos</span>
+                        <p className="text-xl font-bold text-foreground print:text-black mt-1">
                           {formatCurrency(productsData.reduce((acc, p) => acc + ((Number(p.price || 0)) * (Number(p.sold_count || 0))), 0))}
                         </p>
                       </div>
-                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Faturamento Bruto Total</span>
-                        <p className="text-xl font-bold text-emerald-400 mt-1">
+                      <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 print:text-black">Faturamento Bruto Total</span>
+                        <p className="text-xl font-bold text-emerald-400 print:text-black mt-1">
                           {formatCurrency(getFilteredAppointments().reduce((acc, a) => acc + getAppointmentPrice(a), 0) + productsData.reduce((acc, p) => acc + ((Number(p.price || 0)) * (Number(p.sold_count || 0))), 0))}
                         </p>
                       </div>
@@ -1026,6 +1210,22 @@ export default function Relatorios() {
                             </td>
                           </tr>
                         </tbody>
+                        <tfoot>
+                          {(() => {
+                            const filteredAppts = getFilteredAppointments()
+                            const totalServices = filteredAppts.reduce((acc, a) => acc + getAppointmentPrice(a), 0)
+                            const totalProducts = productsData.reduce((acc, p) => acc + ((Number(p.price || 0)) * (Number(p.sold_count || 0))), 0)
+                            const totalBruto = totalServices + totalProducts
+                            return (
+                              <tr className="border-t-2 border-primary/40 bg-primary/10 font-bold text-xs">
+                                <td className="p-3 uppercase tracking-wider text-foreground font-black">Faturamento Bruto Total</td>
+                                <td className="p-3 text-center text-foreground font-bold">{filteredAppts.length} atends. + {productsData.reduce((acc, p) => acc + Number(p.sold_count || 0), 0)} prods.</td>
+                                <td className="p-3 text-right text-muted-foreground">-</td>
+                                <td className="p-3 text-right text-emerald-400 font-black text-sm">{formatCurrency(totalBruto)}</td>
+                              </tr>
+                            )
+                          })()}
+                        </tfoot>
                       </table>
                     </div>
                   </div>
@@ -1060,8 +1260,8 @@ export default function Relatorios() {
                           ) : (
                             getFilteredAppointments().map((a, idx) => (
                               <tr key={a.id || idx} className="hover:bg-muted/20">
-                                <td className="p-3 text-muted-foreground font-medium">{formatDate(a.date || a.created_at)} {a.time || ""}</td>
-                                <td className="p-3 font-semibold text-foreground">{a.customer_name || a.clientName || "Cliente"}</td>
+                                <td className="p-3 text-muted-foreground font-medium whitespace-nowrap">{formatAppointmentDateTime(a)}</td>
+                                <td className="p-3 font-semibold text-foreground">{a.customer_name || a.client_name || a.clientName || "Cliente"}</td>
                                 <td className="p-3 text-muted-foreground">{a.barber_name || a.barberName || "Profissional"}</td>
                                 <td className="p-3 text-muted-foreground">{a.service_name || a.serviceName || "Corte de Cabelo"}</td>
                                 <td className="p-3 text-center">
@@ -1078,6 +1278,18 @@ export default function Relatorios() {
                             ))
                           )}
                         </tbody>
+                        <tfoot>
+                          {(() => {
+                            const filteredAppts = getFilteredAppointments()
+                            const totalValor = filteredAppts.reduce((acc, a) => acc + getAppointmentPrice(a), 0)
+                            return (
+                              <tr className="border-t-2 border-primary/40 bg-primary/10 font-bold text-xs">
+                                <td colSpan="5" className="p-3 uppercase tracking-wider text-foreground font-black">Total Geral dos Agendamentos ({filteredAppts.length} Registros)</td>
+                                <td className="p-3 text-right text-primary font-black text-sm">{formatCurrency(totalValor)}</td>
+                              </tr>
+                            )
+                          })()}
+                        </tfoot>
                       </table>
                     </div>
                   </div>

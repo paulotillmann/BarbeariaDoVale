@@ -132,13 +132,12 @@ async function authMiddleware(c, next) {
   await next();
 }
 
-// --- Funções Auxiliares de Formatação e API Evolution ---
+// --- Funções Auxiliares de Formatação e Fuso Horário (PT-BR UTC-3) ---
 function formatDateTimeToBR(dateTimeStr) {
   if (!dateTimeStr) return "";
-  // Substitui T por espaço caso venha do input datetime-local
-  const parts = dateTimeStr.replace("T", " ").split(" ");
-  const datePart = parts[0]; // "2026-07-17"
-  const timePart = parts[1] || ""; // "18:00"
+  const parts = String(dateTimeStr).trim().replace("T", " ").split(" ");
+  const datePart = parts[0]; // "2026-08-13"
+  const timePart = parts[1] ? parts[1].slice(0, 5) : ""; // "16:30"
 
   const dateSplit = datePart.split("-");
   if (dateSplit.length === 3) {
@@ -146,6 +145,18 @@ function formatDateTimeToBR(dateTimeStr) {
     return timePart ? `${formattedDate} às ${timePart}` : formattedDate;
   }
   return dateTimeStr;
+}
+
+// Converter string de data/hora no padrão BR ("YYYY-MM-DDTHH:mm") para timestamp UTC em ms (Fuso de Brasília / SP UTC-3)
+function getBrazilTimestampMs(appointmentTimeStr) {
+  if (!appointmentTimeStr) return 0;
+  let cleanStr = String(appointmentTimeStr).trim().replace(" ", "T");
+  // Se não contiver indicação de fuso horário (Z ou +/-HH:MM), anexar offset de Brasília (-03:00)
+  if (!cleanStr.includes("Z") && !/[+-]\d{2}:\d{2}$/.test(cleanStr)) {
+    if (cleanStr.length === 16) cleanStr += ":00"; // garante formato YYYY-MM-DDTHH:mm:ss
+    cleanStr += "-03:00";
+  }
+  return Date.parse(cleanStr);
 }
 
 async function sendWhatsApp(env, phone, message) {
@@ -1054,8 +1065,8 @@ app.post('/api/appointments', authMiddleware, async (c) => {
           ).bind(crypto.randomUUID(), appointmentId, 'confirmation', client.phone, sent ? 'sent' : 'failed').run();
         }
 
-        // Agendar Lembrete no Durable Object
-        const appointmentMs = Date.parse(appointment_time);
+        // Agendar Lembrete no Durable Object (Fuso Horário de Brasília UTC-3)
+        const appointmentMs = getBrazilTimestampMs(appointment_time);
         const reminderMs = appointmentMs - (30 * 60 * 1000);
         if (reminderMs > Date.now() && client && client.phone) {
           const doId = c.env.APPOINTMENT_SCHEDULER.idFromName(appointmentId);
@@ -1167,16 +1178,18 @@ app.post('/api/appointments/quick', async (c) => {
       }
     }
 
-    const createdIds = [];
+    const appointmentId = crypto.randomUUID();
+    const primaryServiceId = serviceIds[0];
+
+    await c.env.DB.prepare(
+      "INSERT INTO appointments (id, client_id, barber_id, service_id, appointment_time, status) VALUES (?, ?, ?, ?, ?, 'confirmed')"
+    ).bind(appointmentId, clientId, barber_id, primaryServiceId, appointment_time).run();
+
+    const createdIds = [appointmentId];
     const serviceNames = [];
     let totalPrice = 0;
 
     for (const sId of serviceIds) {
-      const appointmentId = crypto.randomUUID();
-      await c.env.DB.prepare(
-        "INSERT INTO appointments (id, client_id, barber_id, service_id, appointment_time, status) VALUES (?, ?, ?, ?, ?, 'confirmed')"
-      ).bind(appointmentId, clientId, barber_id, sId, appointment_time).run();
-
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO appointment_services (appointment_id, service_id) VALUES (?, ?)"
       ).bind(appointmentId, sId).run();
@@ -1186,7 +1199,6 @@ app.post('/api/appointments/quick', async (c) => {
         serviceNames.push(service.name);
         totalPrice += service.price;
       }
-      createdIds.push(appointmentId);
     }
 
 
@@ -1240,8 +1252,8 @@ app.post('/api/appointments/quick', async (c) => {
           ).bind(crypto.randomUUID(), createdIds[0], 'confirmation', phone, sent ? 'sent' : 'failed').run();
         }
 
-        // Agendar Lembrete
-        const appointmentMs = Date.parse(appointment_time);
+        // Agendar Lembrete no Durable Object (Fuso Horário de Brasília UTC-3)
+        const appointmentMs = getBrazilTimestampMs(appointment_time);
         const reminderMs = appointmentMs - (30 * 60 * 1000);
         if (reminderMs > Date.now() && phone && createdIds.length > 0) {
           const doId = c.env.APPOINTMENT_SCHEDULER.idFromName(createdIds[0]);
@@ -1389,6 +1401,30 @@ app.put('/api/appointments/:id', authMiddleware, async (c) => {
       await c.env.DB.prepare("UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?")
         .bind(name ? name.trim().toUpperCase() : null, phone || null, existing.client_id).run();
     }
+
+    const targetTime = appointment_time || existing.appointment_time;
+    const targetStatus = status || existing.status;
+
+    c.executionCtx.waitUntil((async () => {
+      try {
+        const doId = c.env.APPOINTMENT_SCHEDULER.idFromName(appointmentId);
+        const stub = c.env.APPOINTMENT_SCHEDULER.get(doId);
+
+        if (targetStatus === 'cancelled') {
+          await stub.cancelReminder();
+        } else if (targetStatus === 'confirmed') {
+          const appointmentMs = getBrazilTimestampMs(targetTime);
+          const reminderMs = appointmentMs - (30 * 60 * 1000);
+          if (reminderMs > Date.now()) {
+            await stub.scheduleReminder(appointmentId, reminderMs);
+          } else {
+            await stub.cancelReminder();
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao atualizar lembrete do agendamento no DO:", err);
+      }
+    })());
 
     return c.json({ success: true });
   } catch (e) {
