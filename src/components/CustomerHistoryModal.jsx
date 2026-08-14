@@ -197,10 +197,19 @@ export default function CustomerHistoryModal({ customer, isOpen, onClose, token 
           <div className="flex items-center gap-3.5">
             <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl overflow-hidden border-2 border-gold-subtle shadow-gold bg-background/80 flex items-center justify-center shrink-0">
               {customer.photo ? (
-                <img src={customer.photo} alt={customer.name} className="w-full h-full object-cover" />
-              ) : (
-                <User size={26} className="text-primary/70" />
-              )}
+                <img 
+                  src={customer.photo} 
+                  alt={customer.name} 
+                  className="w-full h-full object-cover" 
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                    if (e.currentTarget.nextElementSibling) {
+                      e.currentTarget.nextElementSibling.style.display = 'block'
+                    }
+                  }}
+                />
+              ) : null}
+              <User size={26} className={`text-primary/70 ${customer.photo ? 'hidden' : 'block'}`} />
             </div>
             <div>
               <div className="flex items-center gap-2">

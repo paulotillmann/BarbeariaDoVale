@@ -384,10 +384,19 @@ export default function Clientes() {
                                 <div className="flex items-center gap-3.5 min-w-0">
                                   <div className="w-14 h-14 rounded-full overflow-hidden border border-gold-subtle shadow-sm bg-background/50 flex items-center justify-center shrink-0">
                                     {c.photo ? (
-                                      <img src={c.photo} alt={c.name} className="w-full h-full object-cover" />
-                                    ) : (
-                                      <User size={24} className="text-muted-foreground/60" />
-                                    )}
+                                      <img 
+                                        src={c.photo} 
+                                        alt={c.name} 
+                                        className="w-full h-full object-cover" 
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = 'none'
+                                          if (e.currentTarget.nextElementSibling) {
+                                            e.currentTarget.nextElementSibling.style.display = 'block'
+                                          }
+                                        }}
+                                      />
+                                    ) : null}
+                                    <User size={24} className={`text-muted-foreground/60 ${c.photo ? 'hidden' : 'block'}`} />
                                   </div>
                                   <div className="min-w-0">
                                     <h4 className="font-bold text-[12pt] tracking-wide text-foreground leading-snug">{c.name}</h4>

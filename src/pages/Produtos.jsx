@@ -59,6 +59,38 @@ const INITIAL_DEFAULT_PRODUCTS = [
   }
 ]
 
+// Componente robusto de imagem do produto com tratamento de erro e fallback
+function ProductThumbnail({ photo, name, onPreview }) {
+  const [hasError, setHasError] = useState(false)
+  const isImageValid = Boolean(photo && typeof photo === "string" && photo.trim().length > 0 && !hasError)
+
+  return (
+    <div 
+      onClick={() => {
+        if (isImageValid && onPreview) {
+          onPreview()
+        }
+      }}
+      className={`w-[102px] h-[102px] bg-background border border-border/60 rounded-xl overflow-hidden flex items-center justify-center text-primary group-hover:scale-105 transition-transform duration-300 ${
+        isImageValid ? "cursor-pointer hover:ring-2 hover:ring-primary/60" : ""
+      }`}
+      title={isImageValid ? "Clique para visualizar em tamanho original" : ""}
+    >
+      {isImageValid ? (
+        <img 
+          src={photo} 
+          alt={name} 
+          className="w-full h-full object-cover" 
+          onError={() => setHasError(true)}
+          loading="lazy"
+        />
+      ) : (
+        <Package size={36} className="text-primary/70" />
+      )}
+    </div>
+  )
+}
+
 export default function Produtos() {
   const { user, token } = useAuth()
 
@@ -562,23 +594,11 @@ export default function Produtos() {
                         {/* Header do Card com Foto, Badge de Estoque e Nome */}
                         <div className="flex items-start gap-3 mb-3">
                           <div className="flex flex-col items-center gap-1.5 shrink-0">
-                            <div 
-                              onClick={() => {
-                                if (prod.photo) {
-                                  setPreviewImageModal({ url: prod.photo, title: prod.name })
-                                }
-                              }}
-                              className={`w-[102px] h-[102px] bg-background border border-border/60 rounded-xl overflow-hidden flex items-center justify-center text-primary group-hover:scale-105 transition-transform duration-300 ${
-                                prod.photo ? "cursor-pointer hover:ring-2 hover:ring-primary/60" : ""
-                              }`}
-                              title={prod.photo ? "Clique para visualizar em tamanho original" : ""}
-                            >
-                              {prod.photo ? (
-                                <img src={prod.photo} alt={prod.name} className="w-full h-full object-cover" />
-                              ) : (
-                                <Package size={36} />
-                              )}
-                            </div>
+                            <ProductThumbnail 
+                              photo={prod.photo} 
+                              name={prod.name} 
+                              onPreview={() => setPreviewImageModal({ url: prod.photo, title: prod.name })} 
+                            />
                             {/* Badge de Estoque */}
                             <span className={`text-[12px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border text-center ${
                               isStockOut 
@@ -791,10 +811,19 @@ export default function Produtos() {
                 <div className="flex items-center gap-4 bg-background/40 border border-border/60 p-3.5 rounded-xl">
                   <div className="w-14 h-14 rounded-xl overflow-hidden border border-border/80 bg-background flex items-center justify-center shrink-0">
                     {photo ? (
-                      <img src={photo} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <Package size={24} className="text-muted-foreground/40" />
-                    )}
+                      <img 
+                        src={photo} 
+                        alt="Preview" 
+                        className="w-full h-full object-cover" 
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                          if (e.currentTarget.nextElementSibling) {
+                            e.currentTarget.nextElementSibling.style.display = 'block'
+                          }
+                        }}
+                      />
+                    ) : null}
+                    <Package size={24} className={`text-muted-foreground/40 ${photo ? 'hidden' : 'block'}`} />
                   </div>
                   <div className="flex-1 space-y-1">
                     <label 
@@ -968,6 +997,7 @@ export default function Produtos() {
                 src={previewImageModal.url}
                 alt={previewImageModal.title}
                 className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-xl"
+                onError={() => setPreviewImageModal(null)}
               />
             </div>
           </div>
