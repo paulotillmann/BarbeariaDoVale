@@ -19,6 +19,7 @@ import ResetPassword from "./pages/ResetPassword.jsx"
 import MeuPerfil from "./pages/MeuPerfil.jsx"
 import Caixa from "./pages/Caixa.jsx"
 import Relatorios from "./pages/Relatorios.jsx"
+import MeuCaixa from "./pages/MeuCaixa.jsx"
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/agenda-barbeiros" element={<ProtectedRoute allowedRoles={['admin', 'secretario', 'barber']}><AgendaGrid /></ProtectedRoute>} />
           <Route path="/clientes" element={<ProtectedRoute allowedRoles={['admin', 'secretario', 'barber']}><Clientes /></ProtectedRoute>} />
           <Route path="/caixa" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Caixa /></ProtectedRoute>} />
+          <Route path="/meu-caixa" element={<ProtectedRoute allowedRoles={['admin', 'secretario', 'barber']}><MeuCaixa /></ProtectedRoute>} />
           <Route path="/servicos" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Servicos /></ProtectedRoute>} />
           <Route path="/produtos" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Produtos /></ProtectedRoute>} />
           <Route path="/profissionais" element={<ProtectedRoute allowedRoles={['admin', 'secretario']}><Profissionais /></ProtectedRoute>} />

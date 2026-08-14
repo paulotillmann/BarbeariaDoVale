@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
-import { Users, Plus, Search, AlertTriangle, CheckCircle2, User, Pencil, Trash2, Sparkles, Upload } from "lucide-react"
+import { Users, Plus, Search, AlertTriangle, CheckCircle2, User, Pencil, Trash2, Sparkles, Upload, History } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
+import CustomerHistoryModal from "../components/CustomerHistoryModal.jsx"
 
 export default function Clientes() {
   const { user, token } = useAuth()
@@ -22,6 +23,8 @@ export default function Clientes() {
   const [customerSuccess, setCustomerSuccess] = useState("")
   const [customerSubmitting, setCustomerSubmitting] = useState(false)
   const [appointments, setAppointments] = useState([])
+  const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState(null)
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
 
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
@@ -377,18 +380,32 @@ export default function Clientes() {
                         .map((c) => (
                           <div key={c.id} className="bg-muted/30 border border-border/80 rounded-2xl p-5 hover:border-primary/45 transition-all duration-300 shadow-sm flex flex-col justify-between relative overflow-hidden group">
                             <div className="space-y-4">
-                              <div className="flex items-center gap-4">
-                                <div className="w-14 h-14 rounded-full overflow-hidden border border-gold-subtle shadow-sm bg-background/50 flex items-center justify-center shrink-0">
-                                  {c.photo ? (
-                                    <img src={c.photo} alt={c.name} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <User size={24} className="text-muted-foreground/60" />
-                                  )}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-3.5 min-w-0">
+                                  <div className="w-14 h-14 rounded-full overflow-hidden border border-gold-subtle shadow-sm bg-background/50 flex items-center justify-center shrink-0">
+                                    {c.photo ? (
+                                      <img src={c.photo} alt={c.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <User size={24} className="text-muted-foreground/60" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="font-bold text-[12pt] tracking-wide text-foreground leading-snug">{c.name}</h4>
+                                    <p className="text-[10pt] text-muted-foreground mt-0.5">Cadastrado em {formatDateTime(c.created_at || new Date().toISOString())}</p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <h4 className="font-bold text-[12pt] tracking-wide text-foreground leading-snug">{c.name}</h4>
-                                  <p className="text-[10pt] text-muted-foreground mt-0.5">Cadastrado em {formatDateTime(c.created_at || new Date().toISOString())}</p>
-                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCustomerForHistory(c)
+                                    setIsHistoryModalOpen(true)
+                                  }}
+                                  className="p-2.5 flex items-center justify-center bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground rounded-xl transition-all cursor-pointer border border-primary/25 hover:border-primary shrink-0 shadow-sm hover:scale-105"
+                                  title="Ver Histórico do Cliente"
+                                >
+                                  <History size={16} />
+                                </button>
                               </div>
 
                               <div className="space-y-2 text-[12pt] text-muted-foreground border-t border-border/40 pt-3">
@@ -650,6 +667,17 @@ export default function Clientes() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE HISTÓRICO DO CLIENTE */}
+      <CustomerHistoryModal
+        customer={selectedCustomerForHistory}
+        isOpen={isHistoryModalOpen}
+        onClose={() => {
+          setIsHistoryModalOpen(false)
+          setSelectedCustomerForHistory(null)
+        }}
+        token={token}
+      />
     </div>
   )
 }

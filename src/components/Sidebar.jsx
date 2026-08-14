@@ -24,8 +24,8 @@ export default function Sidebar() {
   const baseSidebarOptions = [
     { id: "dashboard", label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={20} /> },
     { id: "agenda-barbeiros", label: "Agenda Barbeiros", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
-    { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
     { id: "caixa", label: "Fluxo de Caixa", path: "/caixa", icon: <Wallet size={20} /> },
+    { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
     { id: "servicos", label: "Serviços", path: "/servicos", icon: <Scissors size={20} /> },
     { id: "produtos", label: "Produtos", path: "/produtos", icon: <Package size={20} /> },
     { id: "equipe", label: "Profissionais", path: "/profissionais", icon: <User size={20} /> },
@@ -36,7 +36,11 @@ export default function Sidebar() {
   if (user.role === 'admin') {
     sidebarOptions = [...baseSidebarOptions, { id: "configuracoes", label: "Configurações", path: "/configuracoes", icon: <Settings size={20} /> }]
   } else if (user.role === 'barber') {
-    sidebarOptions = baseSidebarOptions.filter(opt => ['agenda-barbeiros', 'clientes'].includes(opt.id))
+    sidebarOptions = [
+      { id: "agenda-barbeiros", label: "Agenda Barbeiros", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
+      { id: "meu-caixa", label: "Meu Caixa", path: "/meu-caixa", icon: <Wallet size={20} /> },
+      { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> }
+    ]
   } else {
     // Secretário(a)
     sidebarOptions = baseSidebarOptions
@@ -46,6 +50,7 @@ export default function Sidebar() {
 
   const mobileOptions = user?.role === 'barber' ? [
     { id: "agenda-barbeiros", label: "Agenda", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
+    { id: "meu-caixa", label: "Meu Caixa", path: "/meu-caixa", icon: <Wallet size={20} /> },
     { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
     {
       id: "logout",
@@ -59,8 +64,8 @@ export default function Sidebar() {
   ] : [
     { id: "dashboard", label: "Painel", path: "/dashboard", icon: <LayoutDashboard size={20} /> },
     { id: "agenda-barbeiros", label: "Agenda", path: "/agenda-barbeiros", icon: <CalendarRange size={20} /> },
-    { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
     { id: "caixa", label: "Caixa", path: "/caixa", icon: <Wallet size={20} /> },
+    { id: "clientes", label: "Clientes", path: "/clientes", icon: <Users size={20} /> },
     {
       id: "logout",
       label: "Sair",

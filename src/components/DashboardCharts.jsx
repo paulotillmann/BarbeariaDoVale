@@ -417,7 +417,7 @@ export function ServicesDistributionChart({ data = [] }) {
       </div>
 
       {/* Grade Principal: Esquerda (Gráfico) x Direita (Legenda de % em 2 colunas) */}
-      <div className="flex flex-col lg:flex-row items-stretch justify-between gap-6 flex-1 min-h-0">
+      <div className="flex flex-col 2xl:flex-row items-stretch justify-between gap-5 flex-1 min-h-0">
         {/* Lado Esquerdo: Gráfico de Barras Horizontais com Eixo X e Guias Pontilhadas */}
         <div className="flex-1 flex flex-col justify-between relative min-h-[220px]">
           {/* Linhas pontilhadas verticais de guia (0%, 25%, 50%, 75%, 100%) */}
@@ -430,27 +430,27 @@ export function ServicesDistributionChart({ data = [] }) {
           </div>
 
           {/* Lista de Barras de Serviços com Números de Ranking 1 a 6 */}
-          <div className="space-y-3 relative z-10 flex-1 flex flex-col justify-between py-1">
+          <div className="space-y-2.5 relative z-10 flex-1 flex flex-col justify-between py-1">
             {processedData.map((item) => (
-              <div key={item.name} className="flex items-center gap-2.5 h-7">
+              <div key={item.name} className="flex items-center gap-2 h-6.5">
                 <span className="w-4 text-xs font-mono font-bold text-muted-foreground text-center shrink-0">
                   {item.rank}
                 </span>
                 <div className="flex-1 h-full relative flex items-center">
                   <div
                     style={{ width: `${item.pct}%`, backgroundColor: item.color }}
-                    className="h-full rounded-r-full transition-all duration-500 flex items-center justify-start px-3 shadow-sm border border-black/10 shrink-0"
+                    className="h-full rounded-r-full transition-all duration-500 flex items-center justify-start px-3 shadow-sm border border-black/10 shrink-0 min-w-[70px]"
                   >
                     <span
-                      className={`text-[10pt] font-bold truncate max-w-full tracking-wide uppercase ${
+                      className={`text-[9.5pt] font-bold truncate max-w-full tracking-wide uppercase ${
                         item.isLightColor ? "text-black" : "text-white"
                       }`}
                     >
                       {item.name}
                     </span>
                   </div>
-                  {/* Quantidade exibida FORA DA BARRA (10pt) */}
-                  <span className="text-[10pt] font-black font-mono text-foreground shrink-0 ml-2 bg-background/80 border border-border/60 px-2 py-0.5 rounded-md shadow-xs">
+                  {/* Quantidade exibida FORA DA BARRA (9.5pt) */}
+                  <span className="text-[9.5pt] font-black font-mono text-foreground shrink-0 ml-1.5 bg-background/80 border border-border/60 px-1.5 py-0.5 rounded-md shadow-xs">
                     {item.value} srv
                   </span>
                 </div>
@@ -468,35 +468,35 @@ export function ServicesDistributionChart({ data = [] }) {
           </div>
         </div>
 
-        {/* Lado Direito: Estatísticas de Porcentagem em 2 Colunas */}
-        <div className="w-full lg:w-64 shrink-0 grid grid-cols-2 gap-x-4 gap-y-3 items-center pl-0 lg:pl-4 border-t lg:border-t-0 lg:border-l border-border/40 pt-3 lg:pt-0">
+        {/* Lado Direito / Inferior: Estatísticas de Porcentagem em 2 Colunas */}
+        <div className="w-full 2xl:w-56 shrink-0 grid grid-cols-2 gap-x-3 gap-y-2.5 items-center pl-0 2xl:pl-3 border-t 2xl:border-t-0 2xl:border-l border-border/40 pt-3 2xl:pt-0">
           {/* Coluna 1 (Ímpares: 1, 3, 5) */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {col1.map((item) => (
               <div key={item.name} className="space-y-0.5">
                 <div className="flex items-start gap-1.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: item.color }} />
-                  <span className="text-[10.5px] font-semibold text-muted-foreground leading-tight break-words uppercase">{item.name}</span>
+                  <span className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ backgroundColor: item.color }} />
+                  <span className="text-[10px] font-semibold text-muted-foreground leading-tight break-words uppercase">{item.name}</span>
                 </div>
-                <div className="text-sm font-extrabold font-mono text-foreground pl-4 flex items-center gap-1.5">
+                <div className="text-xs font-extrabold font-mono text-foreground pl-3.5 flex items-center gap-1">
                   <span>{item.pct}%</span>
-                  <span className="text-[10px] font-normal text-muted-foreground font-sans">({item.value} srv)</span>
+                  <span className="text-[9px] font-normal text-muted-foreground font-sans">({item.value})</span>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Coluna 2 (Pares: 2, 4, 6) */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {col2.map((item) => (
               <div key={item.name} className="space-y-0.5">
                 <div className="flex items-start gap-1.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: item.color }} />
-                  <span className="text-[10.5px] font-semibold text-muted-foreground leading-tight break-words uppercase">{item.name}</span>
+                  <span className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ backgroundColor: item.color }} />
+                  <span className="text-[10px] font-semibold text-muted-foreground leading-tight break-words uppercase">{item.name}</span>
                 </div>
-                <div className="text-sm font-extrabold font-mono text-foreground pl-4 flex items-center gap-1.5">
+                <div className="text-xs font-extrabold font-mono text-foreground pl-3.5 flex items-center gap-1">
                   <span>{item.pct}%</span>
-                  <span className="text-[10px] font-normal text-muted-foreground font-sans">({item.value} srv)</span>
+                  <span className="text-[9px] font-normal text-muted-foreground font-sans">({item.value})</span>
                 </div>
               </div>
             ))}

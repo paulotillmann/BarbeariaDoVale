@@ -575,6 +575,31 @@ app.get('/api/barbers', async (c) => {
   }
 });
 
+// 5.0.0 Obter dados do Barbeiro logado (Comissões e perfil)
+app.get('/api/barbers/me', authMiddleware, async (c) => {
+  const user = c.get('user');
+  try {
+    const barber = await c.env.DB.prepare(
+      "SELECT id, name, phone, photo, birth_date, specialty, hired_at, service_commission, product_commission, user_id FROM barbers WHERE user_id = ? OR id = ?"
+    ).bind(user.id, user.id).first();
+    
+    if (!barber) {
+      // Fallback: se não encontrar na tabela barbers, retorna dados básicos com comissão 0
+      return c.json({
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        service_commission: 0,
+        product_commission: 0,
+        user_id: user.id
+      });
+    }
+    return c.json(barber);
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // 5.0.1 Criar Barbeiro / Profissional (Admin / Secretário)
 app.post('/api/barbers', authMiddleware, async (c) => {
   const user = c.get('user');
@@ -1732,6 +1757,136 @@ app.delete('/api/customers/:id', authMiddleware, async (c) => {
   }
 });
 
+// 15.1. Histórico Completo do Cliente (Serviços Realizados, Compras de Produtos e Resumo)
+app.get('/api/customers/:id/history', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'barber' && user.role !== 'secretario') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const customerId = c.req.param('id');
+  try {
+    const customer = await c.env.DB.prepare(
+      "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers WHERE id = ?"
+    ).bind(customerId).first();
+
+    if (!customer) {
+      return c.json({ error: 'Cliente não encontrado.' }, 404);
+    }
+
+    // 1. Buscar todos os agendamentos/serviços do cliente (concluídos, confirmados, cancelados, faltas)
+    const { results: appointments } = await c.env.DB.prepare(`
+      SELECT a.id, a.client_id, a.barber_id, a.appointment_time, a.status, a.cancellation_reason, a.created_at,
+             b.name as barber_name, b.photo as barber_photo,
+             COALESCE(
+               (SELECT GROUP_CONCAT(s.name, ', ') FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+               s_single.name,
+               'Serviço'
+             ) as service_name,
+             COALESCE(
+               (SELECT SUM(s.price) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+               s_single.price,
+               0
+             ) as service_price,
+             (
+               SELECT s.payment_method FROM sales s WHERE s.appointment_id = a.id LIMIT 1
+             ) as payment_method
+      FROM appointments a
+      LEFT JOIN barbers b ON (a.barber_id = b.id OR a.barber_id = b.user_id)
+      LEFT JOIN services s_single ON a.service_id = s_single.id
+      WHERE a.client_id = ?
+      ORDER BY a.appointment_time DESC
+    `).bind(customerId).all();
+
+    // 2. Buscar todas as vendas/compras de produtos do cliente
+    const { results: sales } = await c.env.DB.prepare(`
+      SELECT s.id, s.appointment_id, s.customer_id, s.sale_date, s.payment_method, s.total_amount, s.created_at,
+             b.name as barber_name
+      FROM sales s
+      LEFT JOIN appointments a ON s.appointment_id = a.id
+      LEFT JOIN barbers b ON a.barber_id = b.id
+      WHERE s.customer_id = ? OR s.appointment_id IN (SELECT id FROM appointments WHERE client_id = ?)
+      ORDER BY s.sale_date DESC, s.created_at DESC
+    `).bind(customerId, customerId).all();
+
+    const productSales = [];
+    if (sales && sales.length > 0) {
+      for (const sale of sales) {
+        const { results: items } = await c.env.DB.prepare(`
+          SELECT si.id, si.sale_id, si.product_id, si.quantity, si.unit_price, si.total_price,
+                 p.name as product_name, p.photo as product_photo
+          FROM sale_items si
+          LEFT JOIN products p ON si.product_id = p.id
+          WHERE si.sale_id = ?
+        `).bind(sale.id).all();
+
+        sale.items = items || [];
+        
+        if (items && items.length > 0) {
+          for (const item of items) {
+            productSales.push({
+              sale_id: sale.id,
+              sale_date: sale.sale_date || sale.created_at,
+              payment_method: sale.payment_method,
+              product_id: item.product_id,
+              product_name: item.product_name || 'Produto',
+              product_photo: item.product_photo,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              total_price: item.total_price,
+              barber_name: sale.barber_name
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Métricas e Resumo
+    // Total pago com serviços (apenas status 'completed' ou 'confirmed')
+    const completedServices = (appointments || []).filter(a => a.status === 'completed' || a.status === 'confirmed');
+    const totalServicesPaid = completedServices.reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
+
+    // Total pago com produtos
+    const totalProductsPaid = (sales || []).reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0);
+
+    // Último serviço (preferência para completed/confirmed, ou o mais recente da lista)
+    const lastService = completedServices.length > 0 ? completedServices[0] : (appointments && appointments.length > 0 ? appointments[0] : null);
+
+    // Último produto comprado
+    const lastProduct = productSales.length > 0 ? productSales[0] : null;
+
+    return c.json({
+      customer,
+      summary: {
+        total_services_paid: totalServicesPaid,
+        total_products_paid: totalProductsPaid,
+        total_services_count: appointments ? appointments.length : 0,
+        total_completed_services_count: completedServices.length,
+        total_products_count: productSales.reduce((acc, curr) => acc + (curr.quantity || 1), 0),
+        last_service: lastService ? {
+          appointment_time: lastService.appointment_time,
+          service_name: lastService.service_name,
+          service_price: lastService.service_price,
+          barber_name: lastService.barber_name,
+          status: lastService.status
+        } : null,
+        last_product: lastProduct ? {
+          sale_date: lastProduct.sale_date,
+          product_name: lastProduct.product_name,
+          quantity: lastProduct.quantity,
+          total_price: lastProduct.total_price,
+          payment_method: lastProduct.payment_method
+        } : null
+      },
+      services: appointments || [],
+      products: productSales,
+      sales: sales || []
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // 16. Obter um profissional específico
 app.get('/api/barbers/:id', authMiddleware, async (c) => {
   const id = c.req.param('id');
@@ -2179,7 +2334,7 @@ async function syncCompletedAppointmentsToCaixa(db) {
 // 12. Listar Lançamentos do Caixa
 app.get('/api/caixa', authMiddleware, async (c) => {
   const user = c.get('user');
-  if (user.role !== 'admin' && user.role !== 'secretario') {
+  if (user.role !== 'admin' && user.role !== 'secretario' && user.role !== 'barber') {
     return c.json({ error: 'Acesso negado.' }, 403);
   }
 
@@ -2187,15 +2342,56 @@ app.get('/api/caixa', authMiddleware, async (c) => {
     // Sincroniza agendamentos passados automaticamente
     await syncCompletedAppointmentsToCaixa(c.env.DB);
 
-    const query = `
-      SELECT c.*, COALESCE(b.name, u.name) as barber_name
+    let results = [];
+
+    const selectQueryBase = `
+      SELECT c.*, 
+             COALESCE(b.name, u_barber.name) as barber_name,
+             COALESCE(
+               cust_appt.name, 
+               u_appt.name, 
+               (SELECT COALESCE(cust_s.name, u_s.name) FROM sales s LEFT JOIN customers cust_s ON s.customer_id = cust_s.id LEFT JOIN users u_s ON s.customer_id = u_s.id WHERE s.id = REPLACE(c.id, 'caixa-sale-', ''))
+             ) as client_name,
+             (
+               SELECT GROUP_CONCAT(p.name || ' (' || si.quantity || 'x)', ', ')
+               FROM sale_items si
+               JOIN products p ON si.product_id = p.id
+               WHERE si.sale_id = REPLACE(c.id, 'caixa-sale-', '')
+             ) as products_detail,
+             COALESCE(
+               (SELECT GROUP_CONCAT(s.name, ', ') FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+               s_single.name
+             ) as service_names
       FROM caixa c
       LEFT JOIN barbers b ON (c.barber_id = b.id OR c.barber_id = b.user_id)
-      LEFT JOIN users u ON (c.barber_id = u.id OR b.user_id = u.id)
-      ORDER BY c.date DESC, c.created_at DESC
+      LEFT JOIN users u_barber ON (c.barber_id = u_barber.id OR b.user_id = u_barber.id)
+      LEFT JOIN appointments a ON (c.appointment_id = a.id OR c.id = 'cx-srv-' || a.id)
+      LEFT JOIN customers cust_appt ON a.client_id = cust_appt.id
+      LEFT JOIN users u_appt ON a.client_id = u_appt.id
+      LEFT JOIN services s_single ON a.service_id = s_single.id
     `;
 
-    const { results } = await c.env.DB.prepare(query).all();
+    if (user.role === 'barber') {
+      const barber = await c.env.DB.prepare(
+        "SELECT id, user_id FROM barbers WHERE user_id = ? OR id = ?"
+      ).bind(user.id, user.id).first();
+      const barberId = barber ? barber.id : user.id;
+
+      const query = `
+        ${selectQueryBase}
+        WHERE c.barber_id = ? OR c.barber_id = ? OR b.id = ? OR b.user_id = ?
+        ORDER BY c.date DESC, c.created_at DESC
+      `;
+      const stmt = await c.env.DB.prepare(query).bind(barberId, user.id, barberId, user.id).all();
+      results = stmt.results || [];
+    } else {
+      const query = `
+        ${selectQueryBase}
+        ORDER BY c.date DESC, c.created_at DESC
+      `;
+      const stmt = await c.env.DB.prepare(query).all();
+      results = stmt.results || [];
+    }
 
     let totalReceitas = 0;
     let totalDespesas = 0;

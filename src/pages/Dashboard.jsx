@@ -35,6 +35,7 @@ import {
   ProductsDistributionChart,
   ServicesVsProductsChart
 } from "../components/DashboardCharts.jsx"
+import TopClientsChart from "../components/TopClientsChart.jsx"
 
 
 
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const [barbers, setBarbers] = useState([])
   const [services, setServices] = useState([])
   const [salesList, setSalesList] = useState([])
+  const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
@@ -101,12 +103,13 @@ export default function Dashboard() {
     try {
       const headers = { Authorization: `Bearer ${token}` }
 
-      const [apptRes, caixaRes, barbRes, srvRes, salesRes] = await Promise.all([
+      const [apptRes, caixaRes, barbRes, srvRes, salesRes, custRes] = await Promise.all([
         fetch(`${API_URL}/api/appointments`, { headers }),
         fetch(`${API_URL}/api/caixa`, { headers }),
         fetch(`${API_URL}/api/barbers`),
         fetch(`${API_URL}/api/services`),
-        fetch(`${API_URL}/api/sales/all`, { headers })
+        fetch(`${API_URL}/api/sales/all`, { headers }),
+        fetch(`${API_URL}/api/customers`, { headers })
       ])
 
       if (apptRes.ok) {
@@ -132,6 +135,11 @@ export default function Dashboard() {
       if (salesRes && salesRes.ok) {
         const salesData = await salesRes.json()
         setSalesList(salesData || [])
+      }
+
+      if (custRes && custRes.ok) {
+        const custData = await custRes.json()
+        setCustomers(custData || [])
       }
     } catch (err) {
       console.error("Erro ao carregar dados do Dashboard:", err)
@@ -772,6 +780,133 @@ export default function Dashboard() {
     return result
   }, [filteredSales, filteredCaixa])
 
+  // 6. Dados para o Gráfico de Ranking dos Top Clientes (Serviços + Produtos)
+  const topClientsData = useMemo(() => {
+    const clientMap = new Map()
+
+    const getOrCreateClient = (id, fallbackName, phone) => {
+      const key = id
+        ? String(id)
+        : phone
+          ? `phone_${phone}`
+          : fallbackName
+            ? `name_${fallbackName.trim().toLowerCase()}`
+            : "unknown"
+
+      if (!clientMap.has(key)) {
+        const cust = customers.find(
+          (c) =>
+            String(c.id) === String(id) ||
+            (phone && c.phone === phone) ||
+            (fallbackName && c.name?.trim().toLowerCase() === fallbackName.trim().toLowerCase())
+        )
+        clientMap.set(key, {
+          id: cust?.id || id || key,
+          name: cust?.name || fallbackName || "Cliente",
+          phone: cust?.phone || phone || "",
+          photo: cust?.photo || "",
+          servicesTotal: 0,
+          servicesCount: 0,
+          productsTotal: 0,
+          productsCount: 0,
+          totalSpent: 0
+        })
+      }
+      return clientMap.get(key)
+    }
+
+    const servicePriceMap = new Map()
+    services.forEach((s) => servicePriceMap.set(String(s.id), Number(s.price || s.valor || 0)))
+
+    const caixaApptPriceMap = new Map()
+    filteredCaixa.forEach((t) => {
+      if (t.appointment_id) caixaApptPriceMap.set(String(t.appointment_id), Number(t.amount || 0))
+      if (t.id && t.id.startsWith("cx-srv-")) {
+        const apptId = t.id.replace("cx-srv-", "")
+        caixaApptPriceMap.set(apptId, Number(t.amount || 0))
+      }
+    })
+
+    filteredAppointments.forEach((a) => {
+      if (a.status === "cancelled") return
+      const clientId = a.client_id || a.customer_id
+      const clientName = a.client_name || a.customer_name || a.name
+      const clientPhone = a.phone || a.client_phone
+
+      if (!clientId && !clientName) return
+
+      const client = getOrCreateClient(clientId, clientName, clientPhone)
+
+      let price = Number(a.price || a.total_price || a.value || a.amount || a.service_price || 0)
+      if (!price && caixaApptPriceMap.has(String(a.id))) {
+        price = caixaApptPriceMap.get(String(a.id))
+      }
+      if (!price) {
+        const rawIds = a.service_ids || a.service_id
+        if (rawIds) {
+          const ids = Array.isArray(rawIds) ? rawIds : String(rawIds).split(",").filter(Boolean)
+          ids.forEach((sId) => {
+            price += servicePriceMap.get(String(sId)) || 0
+          })
+        }
+      }
+
+      client.servicesTotal += price
+      client.servicesCount += 1
+      client.totalSpent += price
+    })
+
+    filteredSales.forEach((s) => {
+      let clientId = s.customer_id || s.client_id
+      let clientName = s.customer_name || s.client_name
+      let clientPhone = s.customer_phone || s.phone
+
+      if (!clientId && s.appointment_id) {
+        const matchedAppt = appointments.find((a) => String(a.id) === String(s.appointment_id))
+        if (matchedAppt) {
+          clientId = matchedAppt.client_id || matchedAppt.customer_id
+          clientName = clientName || matchedAppt.client_name
+          clientPhone = clientPhone || matchedAppt.phone
+        }
+      }
+
+      if (!clientId && !clientName) return
+
+      const client = getOrCreateClient(clientId, clientName, clientPhone)
+
+      let saleTotal = Number(s.total || s.total_price || s.total_amount || s.amount || 0)
+      let itemsCount = 0
+
+      let items = s.items
+      if (typeof items === "string") {
+        try {
+          items = JSON.parse(items)
+        } catch {
+          items = []
+        }
+      }
+      if (Array.isArray(items) && items.length > 0) {
+        items.forEach((it) => {
+          const qty = Number(it.quantity) || 1
+          itemsCount += qty
+          if (!saleTotal) {
+            saleTotal += qty * Number(it.unit_price || it.price || 0)
+          }
+        })
+      } else {
+        itemsCount = 1
+      }
+
+      client.productsTotal += saleTotal
+      client.productsCount += itemsCount
+      client.totalSpent += saleTotal
+    })
+
+    return Array.from(clientMap.values())
+      .filter((c) => c.totalSpent > 0)
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+  }, [filteredAppointments, filteredSales, filteredCaixa, appointments, services, customers])
+
   if (!user) return null
 
   return (
@@ -1234,10 +1369,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* TERCEIRA LINHA DE GRÁFICOS: Produtos Mais Vendidos e Serviços Mais Vendidos */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Gráfico 3: Produtos Mais Vendidos */}
-          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+        {/* TERCEIRA LINHA DE GRÁFICOS: PRODUTOS MAIS VENDIDOS (2/3) X SERVIÇOS MAIS VENDIDOS (1/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Gráfico 3: Produtos Mais Vendidos (2/3 da largura) */}
+          <div className="lg:col-span-2 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
@@ -1251,8 +1386,8 @@ export default function Dashboard() {
             <ProductsDistributionChart data={productsDistributionData} />
           </div>
 
-          {/* Gráfico 4: Distribuição dos Serviços Mais Vendidos */}
-          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+          {/* Gráfico 4: Distribuição dos Serviços Mais Vendidos (1/3 da largura) */}
+          <div className="lg:col-span-1 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
@@ -1267,93 +1402,24 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* QUARTA LINHA: ATIVIDADES RECENTES & SERVIÇOS VS PRODUTOS */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Atendimentos do Dia */}
+        {/* QUARTA LINHA DE GRÁFICOS: TOP CLIENTES (1/2) X SERVIÇOS VS PRODUTOS (1/2) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Gráfico 5: Ranking dos Top Clientes */}
           <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
-              <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
-                <Clock size={18} className="text-primary" /> Próximos Atendimentos do Dia
-              </h3>
-              <Link to="/agenda-barbeiros" className="text-xs font-bold text-primary hover:underline">
-                Ver Agenda Completa ➔
-              </Link>
+              <div>
+                <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
+                  <Users size={18} className="text-primary" /> Top Clientes (Serviços & Produtos)
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Ranking dos clientes que mais investiram em serviços e produtos na Barbearia Do Vale no período.
+                </p>
+              </div>
             </div>
-
-            {filteredAppointments.length === 0 ? (
-              <div className="text-center py-8 text-xs text-muted-foreground">
-                Nenhum atendimento agendado para o período selecionado.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredAppointments.slice(0, 5).map((appt) => (
-                  <div key={appt.id} className="flex items-center justify-between bg-background/50 border border-border/50 rounded-xl p-3 text-xs shadow-xs">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                        <User size={15} />
-                      </div>
-                      <div>
-                        <div className="font-bold text-foreground">{appt.client_name || "Cliente"}</div>
-                        <div className="text-[10px] text-muted-foreground">{appt.service_name} • Barbeiro: {appt.barber_name}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono font-bold text-primary">{formatDateBR(appt.appointment_time)}</div>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block mt-0.5 ${appt.status === "completed" ? "bg-green-500/20 text-green-400" :
-                          appt.status === "cancelled" ? "bg-rose-500/20 text-rose-400" :
-                            "bg-primary/20 text-primary"
-                        }`}>
-                        {appt.status === "completed" ? "Concluído" : appt.status === "cancelled" ? "Cancelado" : "Confirmado"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <TopClientsChart data={topClientsData} />
           </div>
 
-          {/* Últimos Lançamentos do Caixa */}
-          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
-              <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
-                <Wallet size={18} className="text-primary" /> Lançamentos Recentes do Caixa
-              </h3>
-              <Link to="/caixa" className="text-xs font-bold text-primary hover:underline">
-                Gerenciar Caixa ➔
-              </Link>
-            </div>
-
-            {filteredCaixa.length === 0 ? (
-              <div className="text-center py-8 text-xs text-muted-foreground">
-                Nenhum lançamento de caixa no período selecionado.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredCaixa.slice(0, 5).map((item) => (
-                  <div key={item.id} className="flex items-center justify-between bg-background/50 border border-border/50 rounded-xl p-3 text-xs shadow-xs">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${item.type === "receita" ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-rose-500/10 border-rose-500/20 text-rose-400"
-                        }`}>
-                        {item.type === "receita" ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
-                      </div>
-                      <div>
-                        <div className="font-bold text-foreground">{item.description}</div>
-                        <div className="text-[10px] text-muted-foreground">{item.category} {item.barber_name ? `• ${item.barber_name}` : ""}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`font-mono font-bold ${item.type === "receita" ? "text-green-400" : "text-rose-400"}`}>
-                        {item.type === "receita" ? "+" : "-"} {formatCurrency(item.amount)}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground font-mono">{formatDateBR(item.date)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Gráfico: Distribuição por Categoria (Serviços vs Produtos) */}
+          {/* Gráfico 6: Distribuição por Categoria (Serviços vs Produtos) */}
           <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3 gap-2">
               <div>
@@ -1377,6 +1443,59 @@ export default function Dashboard() {
               servicesCount={servicesVsProductsMetrics.servicesCount}
               productsCount={servicesVsProductsMetrics.productsCount}
             />
+          </div>
+        </div>
+
+        {/* QUINTA LINHA: PRÓXIMOS ATENDIMENTOS DO DIA (LARGURA TOTAL 100%) */}
+        <div className="grid grid-cols-1 gap-6">
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3 flex-wrap gap-2">
+              <div>
+                <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
+                  <Clock size={18} className="text-primary" /> Próximos Atendimentos do Dia
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Visão consolidada dos agendamentos programados para o período selecionado.
+                </p>
+              </div>
+              <Link to="/agenda-barbeiros" className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                <span>Ver Agenda Completa</span> ➔
+              </Link>
+            </div>
+
+            {filteredAppointments.length === 0 ? (
+              <div className="text-center py-10 text-xs text-muted-foreground border border-dashed border-border/40 rounded-xl bg-muted/5">
+                Nenhum atendimento agendado para o período selecionado.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {[...filteredAppointments]
+                  .sort((a, b) => (b.appointment_time || "").localeCompare(a.appointment_time || ""))
+                  .slice(0, 9)
+                  .map((appt) => (
+                  <div key={appt.id} className="flex items-center justify-between bg-background/50 border border-border/50 hover:border-primary/40 rounded-xl p-3.5 text-xs shadow-xs transition-all">
+                    <div className="flex items-center gap-3 min-w-0 pr-2">
+                      <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                        <User size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-foreground truncate">{appt.client_name || "Cliente"}</div>
+                        <div className="text-[10.5px] text-muted-foreground truncate">{appt.service_name} • <span className="text-foreground/80">{appt.barber_name}</span></div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-mono font-bold text-primary">{formatDateBR(appt.appointment_time)}</div>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block mt-1 ${appt.status === "completed" ? "bg-green-500/20 text-green-400" :
+                          appt.status === "cancelled" ? "bg-rose-500/20 text-rose-400" :
+                            "bg-primary/20 text-primary"
+                        }`}>
+                        {appt.status === "completed" ? "Concluído" : appt.status === "cancelled" ? "Cancelado" : "Confirmado"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
