@@ -661,10 +661,10 @@ export default function Agendar() {
                         const barberPhoto = barb.photo
                           ? barb.photo
                           : nameLower.includes("marcio") || nameLower.includes("márcio")
-                            ? "/assets/foto_marcio.png"
+                            ? "/assets/marcio-barber.jpeg"
                             : nameLower.includes("lucas")
-                              ? "/assets/foto_lucas.png"
-                              : "/assets/foto_neto.png"
+                              ? "/assets/lucas-barber.jpeg"
+                              : "/assets/neto-barber.jpeg"
 
                         const rawFirst = (barb.name || "").trim().split(/\s+/)[0] || ""
                         const firstName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase() : ""

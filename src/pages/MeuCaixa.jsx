@@ -18,7 +18,8 @@ import {
   User,
   ArrowUpRight,
   ArrowDownRight,
-  AlertCircle
+  AlertCircle,
+  ArrowLeftRight
 } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
@@ -75,6 +76,7 @@ export default function MeuCaixa() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
   const [activeTab, setActiveTab] = useState("all") // 'all', 'servicos', 'produtos'
+  const [showGross, setShowGross] = useState(false) // toggle entre Minha Comissão e Fat. Bruto
 
   const todayStr = useMemo(() => getTodayString(), [])
   const isToday = selectedDate === todayStr && viewMode === "day"
@@ -535,98 +537,85 @@ export default function MeuCaixa() {
           </div>
         )}
 
-        {/* HERO CARD: Minha Comissão do Dia */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#d4af37]/20 via-amber-950/30 to-background border border-white/10 p-5 shadow-gold/10 shadow-xl">
+        {/* HERO CARD: Minha Comissão / Fat. Bruto do Dia */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#d4af37]/20 via-amber-950/30 to-background border border-white/10 p-5 shadow-gold/10 shadow-xl transition-all duration-300">
           <div className="absolute top-0 right-0 -mr-6 -mt-6 w-28 h-28 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
           
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-black uppercase tracking-widest text-[#d4af37] flex items-center gap-1.5">
-              <Sparkles size={14} className="text-[#d4af37]" /> Comissão:
+              {showGross ? (
+                <>
+                  <TrendingUp size={14} className="text-[#d4af37]" /> Fat. Bruto:
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} className="text-[#d4af37]" /> Comissão:
+                </>
+              )}
             </span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/40 text-muted-foreground border border-white/5">
-              Líquido
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/40 text-muted-foreground border border-white/5">
+                {showGross ? "Bruto" : "Líquido"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowGross(prev => !prev)}
+                className="p-1.5 rounded-xl bg-black/40 hover:bg-black/70 text-[#d4af37] hover:text-amber-300 border border-white/10 hover:border-[#d4af37]/40 transition-all cursor-pointer flex items-center gap-1 active:scale-95 shadow-xs"
+                title={showGross ? "Alternar para Minha Comissão" : "Alternar para Faturamento Bruto"}
+                aria-label={showGross ? "Alternar para Minha Comissão" : "Alternar para Faturamento Bruto"}
+              >
+                <ArrowLeftRight size={14} />
+              </button>
+            </div>
           </div>
 
-          <div className="text-3xl font-black text-foreground tracking-tight my-1">
-            {formatCurrency(dayCalculations.totalMinhaComissao)}
+          <div className="text-3xl font-black text-foreground tracking-tight my-1 transition-all">
+            {formatCurrency(
+              showGross 
+                ? dayCalculations.totalFaturamentoBruto 
+                : dayCalculations.totalMinhaComissao
+            )}
           </div>
 
           <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-2 text-xs">
             <div className="bg-black/30 backdrop-blur-sm rounded-xl p-2.5 border border-white/5">
-              <div className="text-[10px] text-muted-foreground font-semibold uppercase flex items-center gap-1">
-                <Scissors size={11} className="text-[#d4af37]" /> Em Serviços ({serviceCommissionPct}%)
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase flex items-center gap-1 truncate">
+                <Scissors size={11} className="text-[#d4af37] shrink-0" />
+                <span className="truncate">
+                  {showGross 
+                    ? "Total em Serviço" 
+                    : `Em Serviços (${serviceCommissionPct}%)`}
+                </span>
               </div>
-              <div className="text-sm font-bold text-foreground mt-0.5">
-                {formatCurrency(dayCalculations.comissaoServicos)}
+              <div className="text-sm font-bold text-foreground mt-0.5 truncate">
+                {formatCurrency(
+                  showGross 
+                    ? dayCalculations.servicosBruto 
+                    : dayCalculations.comissaoServicos
+                )}
               </div>
             </div>
 
             <div className="bg-black/30 backdrop-blur-sm rounded-xl p-2.5 border border-white/5">
-              <div className="text-[10px] text-muted-foreground font-semibold uppercase flex items-center gap-1">
-                <ShoppingBag size={11} className="text-[#d4af37]" /> Em Produtos ({productCommissionPct}%)
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase flex items-center gap-1 truncate">
+                <ShoppingBag size={11} className="text-[#d4af37] shrink-0" />
+                <span className="truncate">
+                  {showGross 
+                    ? "Total em Produtos" 
+                    : `Em Produtos (${productCommissionPct}%)`}
+                </span>
               </div>
-              <div className="text-sm font-bold text-foreground mt-0.5">
-                {formatCurrency(dayCalculations.comissaoProdutos)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Cards Secundários com Totais do Dia */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {/* Total Serviços */}
-          <div className="bg-card border border-white/5 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <Scissors size={16} className="text-primary" />
-              <span className="text-[10px] font-extrabold bg-muted px-1.5 py-0.5 rounded-md text-foreground">
-                {dayCalculations.servicosQtd}
-              </span>
-            </div>
-            <div className="mt-2">
-              <div className="text-[10px] font-bold text-muted-foreground uppercase truncate">
-                Serviços
-              </div>
-              <div className="text-xs font-extrabold text-foreground mt-0.5 truncate">
-                {formatCurrency(dayCalculations.servicosBruto)}
-              </div>
-            </div>
-          </div>
-
-          {/* Total Vendas Produtos */}
-          <div className="bg-card border border-white/5 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <ShoppingBag size={16} className="text-amber-400" />
-              <span className="text-[10px] font-extrabold bg-muted px-1.5 py-0.5 rounded-md text-foreground">
-                {dayCalculations.produtosQtd}
-              </span>
-            </div>
-            <div className="mt-2">
-              <div className="text-[10px] font-bold text-muted-foreground uppercase truncate">
-                Produtos
-              </div>
-              <div className="text-xs font-extrabold text-foreground mt-0.5 truncate">
-                {formatCurrency(dayCalculations.produtosBruto)}
-              </div>
-            </div>
-          </div>
-
-          {/* Faturamento Bruto */}
-          <div className="bg-card border border-white/5 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <TrendingUp size={16} className="text-emerald-400" />
-              <span className="text-[9px] font-bold text-emerald-400">Total</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-[10px] font-bold text-muted-foreground uppercase truncate">
-                Fat. Bruto
-              </div>
-              <div className="text-xs font-extrabold text-foreground mt-0.5 truncate">
-                {formatCurrency(dayCalculations.totalFaturamentoBruto)}
+              <div className="text-sm font-bold text-foreground mt-0.5 truncate">
+                {formatCurrency(
+                  showGross 
+                    ? dayCalculations.produtosBruto 
+                    : dayCalculations.comissaoProdutos
+                )}
               </div>
             </div>
           </div>
         </div>
+
 
         {/* Seção da Lista de Lançamentos do Dia */}
         <div className="bg-card/70 border border-white/5 rounded-3xl p-4 shadow-md flex flex-col gap-3">

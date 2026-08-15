@@ -327,9 +327,9 @@ export default function Profissionais() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 justify-items-center">
               {barbers.map((barb, index) => {
                 const photo = barb.photo || (
-                  index === 0 ? "/assets/foto_marcio.png" :
-                  index === 1 ? "/assets/foto_lucas.png" :
-                  "/assets/foto_neto.png"
+                  index === 0 ? "/assets/marcio-barber.jpeg" :
+                  index === 1 ? "/assets/lucas-barber.jpeg" :
+                  "/assets/neto-barber.jpeg"
                 )
                 return (
                   <div key={barb.id} className="w-full max-w-[280px] bg-muted/20 border border-border/85 rounded-2xl p-6 shadow-md hover:border-primary/40 transition-all duration-300 text-center flex flex-col items-center group relative">

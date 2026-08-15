@@ -130,7 +130,15 @@ export default function AgendaGrid() {
     // Calcular o próximo slot (30 min a mais) como término padrão
     const [h, m] = initialStart.split(":").map(Number)
     let endMin = h * 60 + m + 30
-    if (endMin > 20 * 60) endMin = 20 * 60
+    let maxClosingMin = 20 * 60
+    if (selectedDate) {
+      const dateParts = selectedDate.split("-")
+      if (dateParts.length === 3) {
+        const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
+        if (dateObj.getDay() === 6) maxClosingMin = 16 * 60
+      }
+    }
+    if (endMin > maxClosingMin) endMin = maxClosingMin
     const endH = String(Math.floor(endMin / 60)).padStart(2, "0")
     const endM = String(endMin % 60).padStart(2, "0")
     setCancelEndTime(`${endH}:${endM}`)
@@ -884,7 +892,15 @@ export default function AgendaGrid() {
               <CalendarIcon className="text-primary w-6 h-6" /> Agenda por Barbeiro
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Visão em grade de horários (09h às 20h) organizados por colunas de barbeiro.
+              {(() => {
+                if (!selectedDate) return "Visão em grade de horários organizados por colunas de barbeiro."
+                const dateParts = selectedDate.split("-")
+                const d = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
+                const day = d.getDay()
+                if (day === 0) return "Barbearia fechada aos domingos."
+                if (day === 6) return "Visão em grade de horários de sábado (09h às 16h) organizados por colunas de barbeiro."
+                return "Visão em grade de horários (09h às 20h) organizados por colunas de barbeiro."
+              })()}
             </p>
           </div>
 
@@ -938,7 +954,7 @@ export default function AgendaGrid() {
             <div className="flex items-center gap-2">
               {barbers.map((b, idx) => {
                 const isSel = String(b.id) === String(selectedMobileBarberId) || (b.user_id && String(b.user_id) === String(selectedMobileBarberId))
-                const photo = b.photo || (idx === 0 ? "/assets/foto_marcio.png" : idx === 1 ? "/assets/foto_lucas.png" : "/assets/foto_neto.png")
+                const photo = b.photo || (idx === 0 ? "/assets/marcio-barber.jpeg" : idx === 1 ? "/assets/lucas-barber.jpeg" : "/assets/neto-barber.jpeg")
                 return (
                   <button
                     key={b.id}
@@ -1310,9 +1326,9 @@ export default function AgendaGrid() {
                   {barbers.map((barb, index) => {
                     const isSelected = selectedBarber === barb.id
                     const barberPhoto = barb.photo || (
-                      index === 0 ? "/assets/foto_marcio.png" :
-                        index === 1 ? "/assets/foto_lucas.png" :
-                          "/assets/foto_neto.png"
+                      index === 0 ? "/assets/marcio-barber.jpeg" :
+                        index === 1 ? "/assets/lucas-barber.jpeg" :
+                          "/assets/neto-barber.jpeg"
                     )
                     return (
                       <button

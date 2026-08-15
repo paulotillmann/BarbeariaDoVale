@@ -47,12 +47,26 @@ export default function CEventCalendar2({
     return () => clearInterval(interval)
   }, [])
 
-  // Gerar slots de 30 min das 09:00 às 20:00
+  // Obter o dia da semana a partir da data selecionada (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
+  let dayOfWeek = null
+  if (selectedDate) {
+    const dateParts = selectedDate.split("-")
+    if (dateParts.length === 3) {
+      const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
+      dayOfWeek = dateObj.getDay()
+    }
+  }
+
+  // Gerar slots de 30 min das 09:00 até o encerramento do dia (Sábado: 09h às 16h, Seg-Sex: 09h às 20h, Domingo: Fechado)
   const timeSlots = []
-  for (let hour = 9; hour < 20; hour++) {
-    const hStr = String(hour).padStart(2, "0")
-    timeSlots.push(`${hStr}:00`)
-    timeSlots.push(`${hStr}:30`)
+  if (dayOfWeek !== 0) {
+    const startHour = 9
+    const endHour = dayOfWeek === 6 ? 16 : 20
+    for (let hour = startHour; hour < endHour; hour++) {
+      const hStr = String(hour).padStart(2, "0")
+      timeSlots.push(`${hStr}:00`)
+      timeSlots.push(`${hStr}:30`)
+    }
   }
 
   // Helper para obter a data atual local no formato YYYY-MM-DD
@@ -95,8 +109,8 @@ export default function CEventCalendar2({
   // Cálculo da posição do horário atual na grade
   const currentMinutes = now.getHours() * 60 + now.getMinutes()
   const startGridMinutes = 9 * 60 // 09:00 (540 min)
-  const endGridMinutes = 20 * 60 // 20:00 (1200 min)
-  const isTimeInGridRange = currentMinutes >= startGridMinutes && currentMinutes <= endGridMinutes
+  const endGridMinutes = (dayOfWeek === 6 ? 16 : 20) * 60
+  const isTimeInGridRange = dayOfWeek !== 0 && currentMinutes >= startGridMinutes && currentMinutes <= endGridMinutes
 
   // Posição no eixo vertical (top) em pixels para a linha do horário atual
   const lineTopPx = 57 + (currentMinutes - startGridMinutes) * (56 / 30)
@@ -123,7 +137,7 @@ export default function CEventCalendar2({
       const isMouseIdle = Date.now() - lastMouseMoveRef.current >= 4000
       const d = new Date()
       const currMins = d.getHours() * 60 + d.getMinutes()
-      const inRange = currMins >= startGridMinutes && currMins <= endGridMinutes
+      const inRange = dayOfWeek !== 0 && currMins >= startGridMinutes && currMins <= endGridMinutes
 
       if (isToday && inRange && isMouseIdle) {
         const targetScroll = Math.max(0, (currMins - startGridMinutes) * (56 / 30) - 120)
@@ -132,7 +146,7 @@ export default function CEventCalendar2({
     }, FIVE_MINUTES_MS)
 
     return () => clearInterval(interval)
-  }, [isToday, startGridMinutes, endGridMinutes])
+  }, [isToday, startGridMinutes, endGridMinutes, dayOfWeek])
 
   // Obter o agendamento que começa ou cobre um slot para um determinado barbeiro
   const getAppointmentForSlot = (barberId, slotTime) => {
@@ -226,7 +240,14 @@ export default function CEventCalendar2({
           </div>
         )}
 
-        <table className={`w-full border-collapse text-left table-fixed ${isMobile || barbers.length === 1 ? "w-full min-w-0" : "min-w-[650px] md:min-w-0"}`}>
+        {timeSlots.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground my-auto py-24">
+            <Clock size={44} className="stroke-1 mb-3 text-muted-foreground/40 animate-pulse" />
+            <p className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Barbearia Fechada</p>
+            <p className="text-xs mt-1 text-muted-foreground/60">Não há horários de atendimento disponíveis para este dia (Domingo).</p>
+          </div>
+        ) : (
+          <table className={`w-full border-collapse text-left table-fixed ${isMobile || barbers.length === 1 ? "w-full min-w-0" : "min-w-[650px] md:min-w-0"}`}>
           <colgroup>
             <col className={barbers.length === 1 ? "w-16 md:w-24" : "w-20 md:w-24"} />
             {barbers.map((barber, index) => (
@@ -245,10 +266,10 @@ export default function CEventCalendar2({
                 const barberPhoto =
                   barber.photo ||
                   (index === 0
-                    ? "/assets/foto_marcio.png"
+                    ? "/assets/marcio-barber.jpeg"
                     : index === 1
-                      ? "/assets/foto_lucas.png"
-                      : "/assets/foto_neto.png")
+                      ? "/assets/lucas-barber.jpeg"
+                      : "/assets/neto-barber.jpeg")
 
                 return (
                   <th
@@ -508,6 +529,7 @@ export default function CEventCalendar2({
             })}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   )

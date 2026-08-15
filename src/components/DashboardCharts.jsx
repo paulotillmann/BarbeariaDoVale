@@ -622,7 +622,7 @@ export function ProductsDistributionChart({ data = [] }) {
       </div>
 
       {/* Grade Principal: Esquerda (Gráfico Top 5) x Direita (Legenda em 2 colunas) */}
-      <div className="flex flex-col lg:flex-row items-stretch justify-between gap-6 flex-1 min-h-0">
+      <div className="flex flex-col 2xl:flex-row items-stretch justify-between gap-6 flex-1 min-h-0">
         {/* Lado Esquerdo: Gráfico de Barras Horizontais com Eixo X e Guias Pontilhadas */}
         <div className="flex-1 flex flex-col justify-between relative min-h-[210px]">
           {/* Linhas pontilhadas verticais de guia (0%, 25%, 50%, 75%, 100%) */}
@@ -674,7 +674,7 @@ export function ProductsDistributionChart({ data = [] }) {
         </div>
 
         {/* Lado Direito: Estatísticas de Porcentagem em 2 Colunas (Top 5) */}
-        <div className="w-full lg:w-64 shrink-0 grid grid-cols-2 gap-x-4 gap-y-3 items-center pl-0 lg:pl-4 border-t lg:border-t-0 lg:border-l border-border/40 pt-3 lg:pt-0">
+        <div className="w-full 2xl:w-56 shrink-0 grid grid-cols-2 gap-x-4 gap-y-3 items-center pl-0 2xl:pl-4 border-t 2xl:border-t-0 2xl:border-l border-border/40 pt-3 2xl:pt-0">
           <div className="space-y-3">
             {col1Top5.map((item) => (
               <div key={item.name} className="space-y-0.5">

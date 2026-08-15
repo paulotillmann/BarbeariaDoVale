@@ -789,9 +789,9 @@ export default function Caixa() {
                         const selectedBarber = barbers.find((b) => String(b.id) === String(selectedBarberFilter))
                         const bIndex = barbers.findIndex((b) => String(b.id) === String(selectedBarberFilter))
                         const photo = selectedBarber?.photo || (
-                          bIndex === 0 ? "/assets/foto_marcio.png" :
-                          bIndex === 1 ? "/assets/foto_lucas.png" :
-                          "/assets/foto_neto.png"
+                          bIndex === 0 ? "/assets/marcio-barber.jpeg" :
+                          bIndex === 1 ? "/assets/lucas-barber.jpeg" :
+                          "/assets/neto-barber.jpeg"
                         )
                         return (
                           <div className="w-6 h-6 rounded-full overflow-hidden border border-gold-subtle shrink-0 bg-background flex items-center justify-center">
@@ -843,9 +843,9 @@ export default function Caixa() {
                     {barbers.map((b, index) => {
                       const isSelected = String(selectedBarberFilter) === String(b.id)
                       const photo = b.photo || (
-                        index === 0 ? "/assets/foto_marcio.png" :
-                        index === 1 ? "/assets/foto_lucas.png" :
-                        "/assets/foto_neto.png"
+                        index === 0 ? "/assets/marcio-barber.jpeg" :
+                        index === 1 ? "/assets/lucas-barber.jpeg" :
+                        "/assets/neto-barber.jpeg"
                       )
                       return (
                         <button

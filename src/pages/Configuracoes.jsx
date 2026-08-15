@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
-import { Settings, ShieldAlert, AlertTriangle, CheckCircle2, Pencil, Trash2, MessageSquare } from "lucide-react"
+import { Settings, ShieldAlert, AlertTriangle, CheckCircle2, Pencil, Trash2, MessageSquare, Clock } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
 export default function Configuracoes() {
@@ -42,6 +42,7 @@ export default function Configuracoes() {
   const [shopAddress, setShopAddress] = useState(() => localStorage.getItem("shopAddress") || "Av. Senador Melo Viana, 709 - Goiás, Araguari/MG")
   const [shopPhone, setShopPhone] = useState(() => localStorage.getItem("shopPhone") || "(34) 99868-4036")
   const [shopOpenHours, setShopOpenHours] = useState(() => localStorage.getItem("shopOpenHours") || "Segunda a Sábado das 08:00 às 19:00")
+  const [inactivityMinutes, setInactivityMinutes] = useState(() => localStorage.getItem("inactivityMinutes") || "5")
   const [settingsSuccess, setSettingsSuccess] = useState("")
 
   useEffect(() => {
@@ -285,6 +286,9 @@ export default function Configuracoes() {
     localStorage.setItem("shopAddress", shopAddress)
     localStorage.setItem("shopPhone", shopPhone)
     localStorage.setItem("shopOpenHours", shopOpenHours)
+    localStorage.setItem("inactivityMinutes", inactivityMinutes || "5")
+
+    window.dispatchEvent(new Event("storage_inactivity_updated"))
     
     setSettingsSuccess("Configurações gerais salvas com sucesso!")
     setTimeout(() => {
@@ -469,6 +473,28 @@ export default function Configuracoes() {
                       placeholder="Ex: Segunda a Sábado das 08:00 às 19:00"
                       className="w-full bg-background border border-border focus:border-primary rounded-xl py-2.5 px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                     />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Clock size={12} className="text-primary" /> Tempo de Inatividade (Minutos)
+                      </span>
+                      <span className="text-[9px] text-primary/80 font-normal">Padrão: 5 min</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      required
+                      value={inactivityMinutes}
+                      onChange={(e) => setInactivityMinutes(e.target.value)}
+                      placeholder="Ex: 5"
+                      className="w-full bg-background border border-border focus:border-primary rounded-xl py-2.5 px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Tempo sem interação do usuário para encerramento automático da sessão.
+                    </p>
                   </div>
 
                   <button

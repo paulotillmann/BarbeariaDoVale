@@ -727,9 +727,9 @@ export default function Agenda() {
                     {barbers.map((barb, index) => {
                       const isSelected = barberFilter === barb.id
                       const barberPhoto = barb.photo || (
-                        index === 0 ? "/assets/foto_marcio.png" :
-                          index === 1 ? "/assets/foto_lucas.png" :
-                            "/assets/foto_neto.png"
+                        index === 0 ? "/assets/marcio-barber.jpeg" :
+                          index === 1 ? "/assets/lucas-barber.jpeg" :
+                            "/assets/neto-barber.jpeg"
                       )
 
                       return (
@@ -882,9 +882,9 @@ export default function Agenda() {
                         <div className="mt-1 flex flex-wrap gap-2 items-center">
                           {barberSummaries.map((bSum, bIdx) => {
                             const barberPhoto = bSum.photo || (
-                              bIdx === 0 ? "/assets/foto_marcio.png" :
-                                bIdx === 1 ? "/assets/foto_lucas.png" :
-                                  "/assets/foto_neto.png"
+                              bIdx === 0 ? "/assets/marcio-barber.jpeg" :
+                                bIdx === 1 ? "/assets/lucas-barber.jpeg" :
+                                  "/assets/neto-barber.jpeg"
                             )
                             return (
                               <div
@@ -1338,9 +1338,9 @@ export default function Agenda() {
                   {barbers.map((barb, index) => {
                     const isSelected = selectedBarber === barb.id
                     const barberPhoto = barb.photo || (
-                      index === 0 ? "/assets/foto_marcio.png" :
-                        index === 1 ? "/assets/foto_lucas.png" :
-                          "/assets/foto_neto.png"
+                      index === 0 ? "/assets/marcio-barber.jpeg" :
+                        index === 1 ? "/assets/lucas-barber.jpeg" :
+                          "/assets/neto-barber.jpeg"
                     )
                     return (
                       <button

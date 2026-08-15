@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 import Logo from "../components/Logo.jsx"
 import ColorBends from "../components/ColorBends.jsx"
-import { API_URL } from "../context/AuthContext.jsx"
+import { useAuth, API_URL } from "../context/AuthContext.jsx"
 
 const Instagram = (props) => (
   <svg
@@ -82,7 +82,18 @@ const DEFAULT_SERVICES = [
 
 export default function Home() {
   const navigate = useNavigate()
+  const { user, loading } = useAuth()
   const [servicesList, setServicesList] = useState(DEFAULT_SERVICES)
+
+  useEffect(() => {
+    if (!loading && user) {
+      if (user.role === "barber") {
+        navigate("/agenda-barbeiros", { replace: true })
+      } else {
+        navigate("/dashboard", { replace: true })
+      }
+    }
+  }, [user, loading, navigate])
 
   useEffect(() => {
     async function loadServices() {
@@ -101,6 +112,10 @@ export default function Home() {
     }
     loadServices()
   }, [])
+
+  if (user) {
+    return null
+  }
 
   const handleBookingClick = () => {
     navigate("/agendar")
@@ -121,17 +136,17 @@ export default function Home() {
     {
       name: "MARCIO DO VALE",
       role: "Barbeiro Profissional",
-      photo: "/assets/foto_marcio.png"
+      photo: "/assets/marcio-barber.jpeg"
     },
     {
       name: "LUCAS DO VALE",
       role: "Barbeiro Profissional",
-      photo: "/assets/foto_lucas.png"
+      photo: "/assets/lucas-barber.jpeg"
     },
     {
-      name: "PAULO TILLMANN",
+      name: "PAULO TILLMANN NETO",
       role: "Barbeiro Profissional",
-      photo: "/assets/foto_neto.png"
+      photo: "/assets/neto-barber.jpeg"
     }
   ]
 
@@ -340,6 +355,12 @@ export default function Home() {
                   </a>
                 </div>
 
+                {/* Nome do Profissional */}
+                <div className="py-4 px-3 text-center bg-card/40 flex items-center justify-center min-h-[64px]">
+                  <h3 className="font-rye text-[16pt] text-foreground tracking-wide leading-tight group-hover:gold-text transition-all duration-300">
+                    {barber.name}
+                  </h3>
+                </div>
               </div>
             ))}
           </div>

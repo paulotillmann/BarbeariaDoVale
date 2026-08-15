@@ -959,9 +959,9 @@ export default function Dashboard() {
                     (() => {
                       const bIndex = barbers.findIndex((b) => String(b.id) === String(selectedBarberFilter))
                       const photo = selectedBarberObj?.photo || (
-                        bIndex === 0 ? "/assets/foto_marcio.png" :
-                          bIndex === 1 ? "/assets/foto_lucas.png" :
-                            "/assets/foto_neto.png"
+                        bIndex === 0 ? "/assets/marcio-barber.jpeg" :
+                          bIndex === 1 ? "/assets/lucas-barber.jpeg" :
+                            "/assets/neto-barber.jpeg"
                       )
                       return (
                         <div className="w-6 h-6 rounded-full overflow-hidden border border-gold-subtle shrink-0 bg-background flex items-center justify-center">
@@ -1010,9 +1010,9 @@ export default function Dashboard() {
                   {barbers.map((b, index) => {
                     const isSelected = String(selectedBarberFilter) === String(b.id)
                     const photo = b.photo || (
-                      index === 0 ? "/assets/foto_marcio.png" :
-                        index === 1 ? "/assets/foto_lucas.png" :
-                          "/assets/foto_neto.png"
+                      index === 0 ? "/assets/marcio-barber.jpeg" :
+                        index === 1 ? "/assets/lucas-barber.jpeg" :
+                          "/assets/neto-barber.jpeg"
                     )
                     return (
                       <button
@@ -1369,10 +1369,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* TERCEIRA LINHA DE GRÁFICOS: PRODUTOS MAIS VENDIDOS (2/3) X SERVIÇOS MAIS VENDIDOS (1/3) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Gráfico 3: Produtos Mais Vendidos (2/3 da largura) */}
-          <div className="lg:col-span-2 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+        {/* TERCEIRA LINHA DE GRÁFICOS: PRODUTOS MAIS VENDIDOS (50%) X SERVIÇOS MAIS VENDIDOS (50%) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Gráfico 3: Produtos Mais Vendidos (50% da largura) */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
@@ -1386,8 +1386,8 @@ export default function Dashboard() {
             <ProductsDistributionChart data={productsDistributionData} />
           </div>
 
-          {/* Gráfico 4: Distribuição dos Serviços Mais Vendidos (1/3 da largura) */}
-          <div className="lg:col-span-1 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+          {/* Gráfico 4: Distribuição dos Serviços Mais Vendidos (50% da largura) */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
