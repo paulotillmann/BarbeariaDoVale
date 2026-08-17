@@ -9,33 +9,6 @@ const PAYMENT_METHODS = [
   { id: "A_PRAZO", label: "A PRAZO" }
 ]
 
-const INITIAL_DEFAULT_PRODUCTS = [
-  {
-    id: "prod-pomada-mate",
-    name: "Pomada Modeladora Effect Mate 100g",
-    description: "Pomada modeladora capilar com efeito fosco e fixação forte.",
-    cost_price: 25.00,
-    sale_price: 45.00,
-    stock_quantity: 12
-  },
-  {
-    id: "prod-oleo-barba",
-    name: "Óleo Hidratante para Barba 30ml",
-    description: "Óleo enriquecido com Argan e Jojoba para nutrição profunda.",
-    cost_price: 20.00,
-    sale_price: 38.00,
-    stock_quantity: 8
-  },
-  {
-    id: "prod-shampoo-barba",
-    name: "Shampoo 2 em 1 Cabelo e Barba 250ml",
-    description: "Shampoo especial para cabelo e barba.",
-    cost_price: 30.00,
-    sale_price: 52.00,
-    stock_quantity: 2
-  }
-]
-
 export default function SaleModal({
   isOpen,
   onClose,
@@ -62,10 +35,8 @@ export default function SaleModal({
   const [successMsg, setSuccessMsg] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  // Garantir lista de produtos válida (API D1 ou fallback da barbearia)
-  const activeProducts = (Array.isArray(products) && products.length > 0)
-    ? products
-    : INITIAL_DEFAULT_PRODUCTS
+  // Garantir lista de produtos válida (API D1)
+  const activeProducts = React.useMemo(() => (Array.isArray(products) ? products : []), [products])
 
   // Fechar dropdown de produtos ao clicar fora
   useEffect(() => {
@@ -111,7 +82,7 @@ export default function SaleModal({
         setSyncCaixa(true)
       }
     }
-  }, [isOpen, existingSale, products, activeProducts])
+  }, [isOpen, existingSale, activeProducts])
 
   if (!isOpen || !appointment) return null
 

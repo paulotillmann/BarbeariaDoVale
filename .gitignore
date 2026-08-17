@@ -7,3 +7,10 @@ dist
 .env*
 !.env.example
 backend-api/scratch/
+backend-api/backups/
+*.sql
+!backend-api/migrations/*.sql
+/*.png
+/*.jpg
+/*.jpeg
+/*.JPG

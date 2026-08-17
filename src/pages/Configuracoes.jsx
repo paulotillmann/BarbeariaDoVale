@@ -41,7 +41,7 @@ export default function Configuracoes() {
   const [shopName, setShopName] = useState(() => localStorage.getItem("shopName") || "Barbearia Do Vale")
   const [shopAddress, setShopAddress] = useState(() => localStorage.getItem("shopAddress") || "Av. Senador Melo Viana, 709 - Goiás, Araguari/MG")
   const [shopPhone, setShopPhone] = useState(() => localStorage.getItem("shopPhone") || "(34) 99868-4036")
-  const [shopOpenHours, setShopOpenHours] = useState(() => localStorage.getItem("shopOpenHours") || "Segunda a Sábado das 08:00 às 19:00")
+  const [shopOpenHours, setShopOpenHours] = useState(() => localStorage.getItem("shopOpenHours") || "Seg - Sex: 09:00 - 20:00 | Sábado: 08:00 - 19:00")
   const [inactivityMinutes, setInactivityMinutes] = useState(() => localStorage.getItem("inactivityMinutes") || "5")
   const [settingsSuccess, setSettingsSuccess] = useState("")
 
@@ -470,7 +470,7 @@ export default function Configuracoes() {
                       required
                       value={shopOpenHours}
                       onChange={(e) => setShopOpenHours(e.target.value)}
-                      placeholder="Ex: Segunda a Sábado das 08:00 às 19:00"
+                      placeholder="Ex: Seg - Sex: 09:00 - 20:00 | Sábado: 08:00 - 19:00"
                       className="w-full bg-background border border-border focus:border-primary rounded-xl py-2.5 px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                     />
                   </div>

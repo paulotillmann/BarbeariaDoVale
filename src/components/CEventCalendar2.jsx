@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from "react"
-import { Clock, User, Plus, X, ShoppingBag } from "lucide-react"
+import React, { useState, useEffect, useRef, useMemo } from "react"
+import { Clock, User, Plus, X, ShoppingBag, ReceiptText } from "lucide-react"
 
 /**
  * CEventCalendar2 - Componente de Grade de Agendamentos
@@ -9,12 +9,14 @@ export default function CEventCalendar2({
   barbers = [],
   appointments = [],
   sales = [],
+  caixaTransactions = [],
   selectedDate = "",
   isMobile = false,
   onSelectSlot,
   onCancelSlot,
   onSelectAppointment,
-  onOpenSaleModal
+  onOpenSaleModal,
+  onOpenCaixaModal
 }) {
   const scrollContainerRef = useRef(null)
   const lastMouseMoveRef = useRef(Date.now())
@@ -48,26 +50,29 @@ export default function CEventCalendar2({
   }, [])
 
   // Obter o dia da semana a partir da data selecionada (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
-  let dayOfWeek = null
-  if (selectedDate) {
+  const dayOfWeek = useMemo(() => {
+    if (!selectedDate) return null
     const dateParts = selectedDate.split("-")
     if (dateParts.length === 3) {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
-      dayOfWeek = dateObj.getDay()
+      return dateObj.getDay()
     }
-  }
+    return null
+  }, [selectedDate])
 
-  // Gerar slots de 30 min das 09:00 até o encerramento do dia (Sábado: 09h às 16h, Seg-Sex: 09h às 20h, Domingo: Fechado)
-  const timeSlots = []
-  if (dayOfWeek !== 0) {
-    const startHour = 9
-    const endHour = dayOfWeek === 6 ? 16 : 20
+  // Gerar slots de 30 min (Sábado: 08h às 19h, Seg-Sex: 09h às 20h, Domingo: Fechado)
+  const timeSlots = useMemo(() => {
+    if (dayOfWeek === null || dayOfWeek === 0) return []
+    const slots = []
+    const startHour = dayOfWeek === 6 ? 8 : 9
+    const endHour = dayOfWeek === 6 ? 19 : 20
     for (let hour = startHour; hour < endHour; hour++) {
       const hStr = String(hour).padStart(2, "0")
-      timeSlots.push(`${hStr}:00`)
-      timeSlots.push(`${hStr}:30`)
+      slots.push(`${hStr}:00`)
+      slots.push(`${hStr}:30`)
     }
-  }
+    return slots
+  }, [dayOfWeek])
 
   // Helper para obter a data atual local no formato YYYY-MM-DD
   const getTodayStr = () => {
@@ -108,24 +113,119 @@ export default function CEventCalendar2({
 
   // Cálculo da posição do horário atual na grade
   const currentMinutes = now.getHours() * 60 + now.getMinutes()
-  const startGridMinutes = 9 * 60 // 09:00 (540 min)
-  const endGridMinutes = (dayOfWeek === 6 ? 16 : 20) * 60
+  const startGridMinutes = (dayOfWeek === 6 ? 8 : 9) * 60
+  const endGridMinutes = (dayOfWeek === 6 ? 19 : 20) * 60
   const isTimeInGridRange = dayOfWeek !== 0 && currentMinutes >= startGridMinutes && currentMinutes <= endGridMinutes
 
-  // Posição no eixo vertical (top) em pixels para a linha do horário atual
-  const lineTopPx = 57 + (currentMinutes - startGridMinutes) * (56 / 30)
+  // Posição no eixo vertical (top) em pixels para a linha do horário atual (medida precisa do DOM)
+  const [lineTopPx, setLineTopPx] = useState(null)
+  const hasAutoScrolledRef = useRef(false)
+
+  // Função para calcular a posição exata da linha do horário atual no DOM da grade
+  const updateLinePosition = React.useCallback(() => {
+    if (!scrollContainerRef.current) return
+
+    const d = new Date()
+    const currMins = d.getHours() * 60 + d.getMinutes()
+    const startMins = (dayOfWeek === 6 ? 8 : 9) * 60
+    const endMins = (dayOfWeek === 6 ? 19 : 20) * 60
+    const inRange = dayOfWeek !== 0 && currMins >= startMins && currMins <= endMins
+
+    if (!isToday || !inRange || timeSlots.length === 0) {
+      setLineTopPx(null)
+      return
+    }
+
+    // Se estiver exatamente no fim do horário da grade (ex: 20:00)
+    const lastSlotTime = timeSlots[timeSlots.length - 1]
+    const lastSlotStart = timeToMinutes(lastSlotTime)
+    const gridEndTime = lastSlotStart + 30
+
+    if (currMins >= gridEndTime) {
+      const lastRow = scrollContainerRef.current.querySelector(`tr[data-slot-time="${lastSlotTime}"]`)
+      if (lastRow) {
+        const containerRect = scrollContainerRef.current.getBoundingClientRect()
+        const rowRect = lastRow.getBoundingClientRect()
+        const top = rowRect.bottom - containerRect.top + scrollContainerRef.current.scrollTop
+        setLineTopPx(top)
+        return
+      }
+    }
+
+    // Encontrar o slot de 30min correspondente
+    let targetSlot = null
+    let minutesIntoSlot = 0
+
+    for (let i = 0; i < timeSlots.length; i++) {
+      const slotTime = timeSlots[i]
+      const slotMins = timeToMinutes(slotTime)
+      if (currMins >= slotMins && currMins < slotMins + 30) {
+        targetSlot = slotTime
+        minutesIntoSlot = currMins - slotMins
+        break
+      }
+    }
+
+    if (targetSlot) {
+      const rowEl = scrollContainerRef.current.querySelector(`tr[data-slot-time="${targetSlot}"]`)
+      if (rowEl) {
+        const containerRect = scrollContainerRef.current.getBoundingClientRect()
+        const rowRect = rowEl.getBoundingClientRect()
+        const rowTopInContainer = rowRect.top - containerRect.top + scrollContainerRef.current.scrollTop
+        const rowHeight = rowRect.height
+        const calculatedTop = rowTopInContainer + (minutesIntoSlot / 30) * rowHeight
+        setLineTopPx(calculatedTop)
+        return
+      }
+    }
+
+    // Fallback caso os elementos do DOM ainda estejam montando
+    const slotIndex = Math.max(0, Math.floor((currMins - startMins) / 30))
+    const minInto = (currMins - startMins) % 30
+    const fallbackTop = 64 + slotIndex * 56 + (minInto / 30) * 56
+    setLineTopPx(fallbackTop)
+  }, [dayOfWeek, isToday, timeSlots])
+
+  // Atualizar a posição da linha do horário atual quando necessário
+  useEffect(() => {
+    updateLinePosition()
+  }, [now, selectedDate, isToday, appointments, barbers, sales, caixaTransactions, updateLinePosition])
+
+  // Atualizar posição em caso de redimensionamento da janela ou alteração no tamanho do container
+  useEffect(() => {
+    window.addEventListener("resize", updateLinePosition)
+    let observer = null
+    if (window.ResizeObserver && scrollContainerRef.current) {
+      observer = new ResizeObserver(() => {
+        updateLinePosition()
+      })
+      observer.observe(scrollContainerRef.current)
+    }
+    return () => {
+      window.removeEventListener("resize", updateLinePosition)
+      if (observer) observer.disconnect()
+    }
+  }, [updateLinePosition])
+
+  // Reset auto-scrolled flag when date changes
+  useEffect(() => {
+    hasAutoScrolledRef.current = false
+  }, [selectedDate])
 
   // Rolar automaticamente para o horário atual ao abrir a tela ou mudar a data
   useEffect(() => {
     if (!scrollContainerRef.current) return
 
-    if (isToday && isTimeInGridRange) {
-      const targetScroll = Math.max(0, (currentMinutes - startGridMinutes) * (56 / 30) - 120)
-      scrollContainerRef.current.scrollTo({ top: targetScroll, behavior: "smooth" })
-    } else {
+    if (isToday && isTimeInGridRange && lineTopPx !== null) {
+      if (!hasAutoScrolledRef.current) {
+        const targetScroll = Math.max(0, lineTopPx - 150)
+        scrollContainerRef.current.scrollTo({ top: targetScroll, behavior: "smooth" })
+        hasAutoScrolledRef.current = true
+      }
+    } else if (!isToday) {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" })
     }
-  }, [selectedDate, isToday, isTimeInGridRange, currentMinutes, startGridMinutes])
+  }, [selectedDate, isToday, isTimeInGridRange, lineTopPx])
 
   // Rolar o grid automaticamente a cada 5 minutos para a linha do horário atual (somente se o mouse estiver parado)
   useEffect(() => {
@@ -135,18 +235,14 @@ export default function CEventCalendar2({
       if (!scrollContainerRef.current) return
 
       const isMouseIdle = Date.now() - lastMouseMoveRef.current >= 4000
-      const d = new Date()
-      const currMins = d.getHours() * 60 + d.getMinutes()
-      const inRange = dayOfWeek !== 0 && currMins >= startGridMinutes && currMins <= endGridMinutes
-
-      if (isToday && inRange && isMouseIdle) {
-        const targetScroll = Math.max(0, (currMins - startGridMinutes) * (56 / 30) - 120)
+      if (isToday && isTimeInGridRange && isMouseIdle && lineTopPx !== null) {
+        const targetScroll = Math.max(0, lineTopPx - 150)
         scrollContainerRef.current.scrollTo({ top: targetScroll, behavior: "smooth" })
       }
     }, FIVE_MINUTES_MS)
 
     return () => clearInterval(interval)
-  }, [isToday, startGridMinutes, endGridMinutes, dayOfWeek])
+  }, [isToday, isTimeInGridRange, lineTopPx])
 
   // Obter o agendamento que começa ou cobre um slot para um determinado barbeiro
   const getAppointmentForSlot = (barberId, slotTime) => {
@@ -225,12 +321,12 @@ export default function CEventCalendar2({
         className="overflow-x-auto overflow-y-auto flex-1 min-h-0 custom-scrollbar relative"
       >
         {/* Linha Pontilhada do Horário Atual */}
-        {isToday && isTimeInGridRange && (
+        {isToday && isTimeInGridRange && lineTopPx !== null && (
           <div
             style={{ top: `${lineTopPx}px` }}
-            className="absolute left-0 right-0 z-30 pointer-events-none flex items-center transition-all duration-500"
+            className="absolute left-0 right-0 z-30 pointer-events-none flex items-center -translate-y-1/2 transition-all duration-300"
           >
-            <div className="sticky left-0 z-40 flex items-center justify-end w-24 shrink-0 pr-1">
+            <div className={`sticky left-0 z-40 flex items-center justify-end ${barbers.length === 1 ? "w-16 md:w-24" : "w-20 md:w-24"} shrink-0 pr-1`}>
               <span className="bg-rose-500 text-white font-mono font-extrabold text-[10px] px-1.5 py-0.5 rounded shadow-[0_0_10px_rgba(244,63,94,0.8)] animate-pulse">
                 {String(now.getHours()).padStart(2, "0")}:{String(now.getMinutes()).padStart(2, "0")}
               </span>
@@ -312,6 +408,7 @@ export default function CEventCalendar2({
               return (
                 <tr
                   key={slotTime}
+                  data-slot-time={slotTime}
                   className={`h-14 transition-colors duration-150 ${isHourHeader ? "bg-background/20" : "bg-transparent"
                     }`}
                 >
@@ -428,6 +525,13 @@ export default function CEventCalendar2({
                       const apptEndTimeStr = `${endHStr}:${endMStr}`
                       const apptSale = sales.find(s => String(s.appointment_id) === String(appt.id))
 
+                      const matchedCaixa = caixaTransactions.find(c => c.appointment_id === appt.id || c.id === 'cx-srv-' + appt.id)
+                      const hasCaixa = Boolean(appt.caixa_id || matchedCaixa)
+                      const currentPaymentMethod = appt.caixa_payment_method || (matchedCaixa ? matchedCaixa.payment_method : null)
+                      const currentCaixaAmount = appt.caixa_amount !== undefined && appt.caixa_amount !== null
+                        ? Number(appt.caixa_amount)
+                        : (matchedCaixa ? Number(matchedCaixa.amount) : (Number(appt.service_price || appt.price) || 0))
+
                       return (
                         <td
                           key={`${barber.id}-${slotTime}`}
@@ -445,7 +549,35 @@ export default function CEventCalendar2({
                                 <span className="font-extrabold text-[12pt] truncate text-black">
                                   {appt.client_name || "Cliente"}
                                 </span>
-                                <div className="flex items-center gap-1 shrink-0">
+                                <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                                  {/* Botão de Lançamento de Caixa no Card (Exibido apenas se houver lançamento no caixa) */}
+                                  {hasCaixa && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        onOpenCaixaModal && onOpenCaixaModal(appt)
+                                      }}
+                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-xs cursor-pointer ${
+                                        currentPaymentMethod
+                                          ? "bg-black text-emerald-400 border border-emerald-500/80 hover:bg-neutral-900"
+                                          : "bg-black text-amber-300 border border-amber-500/60 hover:bg-neutral-900"
+                                      }`}
+                                      title={
+                                        currentPaymentMethod
+                                          ? `Caixa: R$ ${currentCaixaAmount.toFixed(2)} (${currentPaymentMethod}) - Clique para editar forma de pagamento/valor`
+                                          : `Caixa: R$ ${currentCaixaAmount.toFixed(2)} - Clique para informar forma de pagamento/ajustar valor`
+                                      }
+                                    >
+                                      <ReceiptText size={11} />
+                                      <span>
+                                        {currentPaymentMethod
+                                          ? `${currentPaymentMethod === "CARTAO_CREDITO" ? "CRÉD" : currentPaymentMethod === "CARTAO_DEBITO" ? "DÉB" : currentPaymentMethod}: R$ ${currentCaixaAmount.toFixed(2)}`
+                                          : `R$ ${currentCaixaAmount.toFixed(2)}`}
+                                      </span>
+                                    </button>
+                                  )}
+
                                   {/* Botão de Venda no Card */}
                                   <button
                                     type="button"
@@ -468,7 +600,7 @@ export default function CEventCalendar2({
                                     <span>{apptSale ? `R$ ${Number(apptSale.total_amount || 0).toFixed(2)}` : "+ Venda"}</span>
                                   </button>
 
-                                  {appt.price && (
+                                  {!hasCaixa && appt.price && (
                                     <span className="bg-black/20 text-black px-1.5 py-0.5 rounded font-mono font-black text-[10px]">
                                       R$ {Number(appt.price).toFixed(2)}
                                     </span>

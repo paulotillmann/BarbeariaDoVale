@@ -175,7 +175,8 @@ async function sendWhatsApp(env, phone, message) {
       },
       body: JSON.stringify({
         phone: targetPhone,
-        message: message
+        message: message,
+        instance: "Barbearia do Vale"
       })
     });
     const data = await res.json();
@@ -727,7 +728,10 @@ app.get('/api/appointments/occupied', async (c) => {
                (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
                s_single.duration_minutes,
                30
-             ) as duration_minutes
+                         ) as duration_minutes,
+            (SELECT c.id FROM caixa c WHERE (c.appointment_id = a.id OR c.id = 'cx-srv-' || a.id) LIMIT 1) as caixa_id,
+            (SELECT c.amount FROM caixa c WHERE (c.appointment_id = a.id OR c.id = 'cx-srv-' || a.id) LIMIT 1) as caixa_amount,
+            (SELECT c.payment_method FROM caixa c WHERE (c.appointment_id = a.id OR c.id = 'cx-srv-' || a.id) LIMIT 1) as caixa_payment_method
       FROM appointments a
       LEFT JOIN barbers b ON (a.barber_id = b.id OR a.barber_id = b.user_id)
       LEFT JOIN services s_single ON a.service_id = s_single.id
@@ -745,6 +749,11 @@ app.get('/api/appointments/occupied', async (c) => {
 app.get('/api/appointments', authMiddleware, async (c) => {
   const user = c.get('user');
   try {
+    try {
+      await syncCompletedAppointmentsToCaixa(c.env.DB);
+    } catch (e) {
+      console.error('Erro no sync ao listar appointments:', e);
+    }
     try {
       await c.env.DB.prepare("ALTER TABLE appointments ADD COLUMN cancellation_reason TEXT").run();
     } catch {}
@@ -791,8 +800,11 @@ app.get('/api/appointments', authMiddleware, async (c) => {
              COALESCE(
                (SELECT SUM(s.duration_minutes) FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
                s_single.duration_minutes
-             ) as duration_minutes
-      FROM appointments a
+              ) as duration_minutes,
+              (SELECT c.id FROM caixa c WHERE (c.appointment_id = a.id OR c.id = 'cx-srv-' || a.id) LIMIT 1) as caixa_id,
+              (SELECT c.amount FROM caixa c WHERE (c.appointment_id = a.id OR c.id = 'cx-srv-' || a.id) LIMIT 1) as caixa_amount,
+              (SELECT c.payment_method FROM caixa c WHERE (c.appointment_id = a.id OR c.id = 'cx-srv-' || a.id) LIMIT 1) as caixa_payment_method
+       FROM appointments a
       LEFT JOIN users u ON a.client_id = u.id
       LEFT JOIN customers cust ON a.client_id = cust.id
       LEFT JOIN barbers b ON (a.barber_id = b.id OR a.barber_id = b.user_id)
@@ -1296,6 +1308,39 @@ app.post('/api/appointments/quick', async (c) => {
   }
 });
 
+// Função Auxiliar: Excluir lançamentos do caixa e vendas vinculadas ao agendamento
+async function deleteAppointmentCaixaAndSales(db, appointmentId) {
+  if (!appointmentId) return;
+  try {
+    // 1. Excluir lançamentos do caixa de serviço (cx-srv-*) ou vinculados diretamente ao appointment_id
+    await db.prepare(`
+      DELETE FROM caixa 
+      WHERE appointment_id = ? 
+         OR id = ?
+    `).bind(appointmentId, 'cx-srv-' + appointmentId).run();
+
+    // 2. Excluir lançamentos de vendas do caixa vinculadas a este agendamento
+    await db.prepare(`
+      DELETE FROM caixa 
+      WHERE id IN (SELECT 'caixa-sale-' || id FROM sales WHERE appointment_id = ?)
+    `).bind(appointmentId).run();
+
+    // 3. Excluir itens de vendas e vendas vinculadas ao agendamento
+    const { results: linkedSales } = await db.prepare(
+      "SELECT id FROM sales WHERE appointment_id = ?"
+    ).bind(appointmentId).all();
+
+    if (linkedSales && linkedSales.length > 0) {
+      for (const sale of linkedSales) {
+        await db.prepare("DELETE FROM sale_items WHERE sale_id = ?").bind(sale.id).run();
+      }
+      await db.prepare("DELETE FROM sales WHERE appointment_id = ?").bind(appointmentId).run();
+    }
+  } catch (err) {
+    console.error("Erro ao excluir lançamentos do caixa/vendas para o agendamento:", appointmentId, err);
+  }
+}
+
 // 8. Cancelar Agendamento
 app.put('/api/appointments/:id/cancel', authMiddleware, async (c) => {
   const appointmentId = c.req.param('id');
@@ -1303,7 +1348,19 @@ app.put('/api/appointments/:id/cancel', authMiddleware, async (c) => {
 
   try {
     const appointment = await c.env.DB.prepare(
-      "SELECT a.*, COALESCE(cust.phone, u.phone) as phone, COALESCE(cust.name, u.name) as client_name, s.name as service_name FROM appointments a LEFT JOIN customers cust ON a.client_id = cust.id LEFT JOIN users u ON a.client_id = u.id JOIN services s ON a.service_id = s.id WHERE a.id = ?"
+      `SELECT a.*, 
+              COALESCE(cust.phone, u.phone) as phone, 
+              COALESCE(cust.name, u.name) as client_name, 
+              COALESCE(
+                (SELECT GROUP_CONCAT(s.name, ', ') FROM appointment_services aps JOIN services s ON aps.service_id = s.id WHERE aps.appointment_id = a.id),
+                s_single.name,
+                'Atendimento'
+              ) as service_name 
+       FROM appointments a 
+       LEFT JOIN customers cust ON a.client_id = cust.id 
+       LEFT JOIN users u ON a.client_id = u.id 
+       LEFT JOIN services s_single ON a.service_id = s_single.id 
+       WHERE a.id = ?`
     ).bind(appointmentId).first();
 
     if (!appointment) {
@@ -1316,8 +1373,12 @@ app.put('/api/appointments/:id/cancel', authMiddleware, async (c) => {
 
     await c.env.DB.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?").bind(appointmentId).run();
 
+    // Excluir lançamentos do caixa e vendas vinculadas a este agendamento
+    await deleteAppointmentCaixaAndSales(c.env.DB, appointmentId);
+
     if (appointment.phone) {
-      const cancellationText = `🚨 *AGENDAMENTO CANCELADO* 🚨\n\nOlá, *${appointment.client_name}*.\nConfirmamos que o seu agendamento para o serviço *${appointment.service_name}* no dia *${appointment.appointment_time}* foi *CANCELADO* com sucesso. 💸\n\nSe desejar agendar um novo horário, estamos à disposição! 💈✨\n🔗 https://barbeariadovale.com.br`;
+      const formattedDateTime = formatDateTimeToBR(appointment.appointment_time);
+      const cancellationText = `🚨 *AGENDAMENTO CANCELADO* 🚨\n\nOlá, *${appointment.client_name}*.\nConfirmamos que o seu agendamento para o serviço *${appointment.service_name}* no dia *${formattedDateTime}* foi *CANCELADO* com sucesso. 💸\n\nSe desejar agendar um novo horário, estamos à disposição! 💈✨\n🔗 https://barbeariadovale.pages.dev`;
       const sent = await sendWhatsApp(c.env, appointment.phone, cancellationText);
 
       await c.env.DB.prepare(
@@ -1430,6 +1491,10 @@ app.put('/api/appointments/:id', authMiddleware, async (c) => {
     const targetTime = appointment_time || existing.appointment_time;
     const targetStatus = status || existing.status;
 
+    if (targetStatus === 'cancelled' || targetStatus === 'absent') {
+      await deleteAppointmentCaixaAndSales(c.env.DB, appointmentId);
+    }
+
     c.executionCtx.waitUntil((async () => {
       try {
         const doId = c.env.APPOINTMENT_SCHEDULER.idFromName(appointmentId);
@@ -1465,6 +1530,9 @@ app.delete('/api/appointments/:id', authMiddleware, async (c) => {
     if (!existing) {
       return c.json({ error: 'Agendamento/Bloqueio não encontrado.' }, 404);
     }
+
+    // Excluir lançamentos do caixa e vendas associadas
+    await deleteAppointmentCaixaAndSales(c.env.DB, appointmentId);
 
     if (existing.status === 'cancelled' && existing.cancellation_reason) {
       const dateStr = existing.appointment_time.split('T')[0];
@@ -2007,24 +2075,7 @@ app.get('/api/products', authMiddleware, async (c) => {
       `).run();
     } catch {}
 
-    try {
-      await c.env.DB.prepare("ALTER TABLE products ADD COLUMN photo TEXT;").run();
-    } catch {}
-
-    // Auto-seed se o banco estiver vazio
-    try {
-      const countRes = await c.env.DB.prepare("SELECT COUNT(*) as cnt FROM products").first();
-      if (!countRes || countRes.cnt === 0) {
-        await c.env.DB.batch([
-          c.env.DB.prepare("INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind('prod-pomada-mate', 'Pomada Modeladora Effect Mate 100g', 'Efeito fosco, alta fixação e fragrância amadeirada exclusiva Do Vale.', 'Barber Supply Brasil', 'Carlos Eduardo', '(34) 99888-7766', 22.50, 45.00, 12),
-          c.env.DB.prepare("INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind('prod-oleo-barba', 'Óleo Hidratante para Barba 30ml', 'Enriquecido com óleo de argan e jojoba para hidratação e brilho natural.', 'Cosméticos Vale Gold', 'Mariana Souza', '(34) 99777-5544', 18.00, 38.00, 8),
-          c.env.DB.prepare("INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind('prod-shampoo-barba', 'Shampoo 2 em 1 Cabelo e Barba 250ml', 'Limpeza profunda sem ressecar a pele e os fios com mentol refrescante.', 'Barber Supply Brasil', 'Carlos Eduardo', '(34) 99888-7766', 25.00, 52.00, 2)
-        ]);
-      }
-    } catch (errSeed) {
-      console.error("Erro ao realizar seed de produtos:", errSeed);
-    }
-
+    // Listar produtos existentes no banco
     const queryParam = c.req.query('q');
     let results;
     if (queryParam) {
@@ -2037,7 +2088,7 @@ app.get('/api/products', authMiddleware, async (c) => {
         "SELECT id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo, created_at, updated_at FROM products ORDER BY name ASC"
       ).all()).results;
     }
-    return c.json(results);
+    return c.json(results || []);
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }
@@ -2278,9 +2329,35 @@ async function syncCompletedAppointmentsToCaixa(db) {
     // Mesclar agendamentos duplicados legados antes de sincronizar
     await mergeOrphanedDuplicateAppointments(db);
 
-    // Selecionar agendamentos passados ou concluídos que ainda não possuem lançamento
-    // de serviço automático no caixa (entradas cx-srv-*). Entradas de venda de produtos
-    // vinculadas ao mesmo agendamento não impedem a criação do lançamento de serviço.
+    // 1. Limpeza preventiva: Remover lançamentos no caixa de agendamentos cancelados, ausentes ou pendentes
+    await db.prepare(`
+      DELETE FROM caixa 
+      WHERE (appointment_id IS NOT NULL OR id LIKE 'cx-srv-%')
+        AND (
+          appointment_id IN (SELECT id FROM appointments WHERE status IN ('cancelled', 'absent', 'pending'))
+          OR REPLACE(id, 'cx-srv-', '') IN (SELECT id FROM appointments WHERE status IN ('cancelled', 'absent', 'pending'))
+        )
+    `).run();
+
+    // 2. Limpeza preventiva: Remover lançamentos de serviços de agendamentos que ainda NÃO iniciaram (menos de 10 min de início ou futuros) e que não estão concluídos
+    await db.prepare(`
+      DELETE FROM caixa
+      WHERE id LIKE 'cx-srv-%'
+        AND (
+          appointment_id IN (
+            SELECT id FROM appointments 
+            WHERE status != 'completed' 
+              AND datetime(REPLACE(appointment_time, 'T', ' '), '+10 minutes') > datetime('now', 'localtime')
+          )
+          OR REPLACE(id, 'cx-srv-', '') IN (
+            SELECT id FROM appointments 
+            WHERE status != 'completed' 
+              AND datetime(REPLACE(appointment_time, 'T', ' '), '+10 minutes') > datetime('now', 'localtime')
+          )
+        )
+    `).run();
+
+    // 3. Selecionar agendamentos iniciados há pelo menos 10 minutos ou concluídos que ainda não possuem lançamento de serviço no caixa
     const { results: eligibleAppts } = await db.prepare(`
       SELECT a.id, a.barber_id, a.appointment_time, a.status,
              COALESCE(cust.name, u.name, 'Cliente') as client_name,
@@ -2300,12 +2377,13 @@ async function syncCompletedAppointmentsToCaixa(db) {
       LEFT JOIN customers cust ON a.client_id = cust.id
       LEFT JOIN barbers b ON a.barber_id = b.id
       LEFT JOIN services s_single ON a.service_id = s_single.id
-      WHERE a.status != 'cancelled'
+      WHERE a.status NOT IN ('cancelled', 'absent', 'pending')
         AND (
           a.status = 'completed' OR
-          REPLACE(a.appointment_time, 'T', ' ') <= datetime('now', 'localtime')
+          datetime(REPLACE(a.appointment_time, 'T', ' '), '+10 minutes') <= datetime('now', 'localtime')
         )
         AND a.id NOT IN (SELECT appointment_id FROM caixa WHERE appointment_id IS NOT NULL AND id LIKE 'cx-srv-%')
+        AND ('cx-srv-' || a.id) NOT IN (SELECT id FROM caixa WHERE id LIKE 'cx-srv-%')
     `).all();
 
     let syncedCount = 0;
@@ -2492,43 +2570,99 @@ app.post('/api/caixa', authMiddleware, async (c) => {
 // 12.3 Editar Lançamento do Caixa
 app.put('/api/caixa/:id', authMiddleware, async (c) => {
   const user = c.get('user');
-  if (user.role !== 'admin' && user.role !== 'secretario') {
+  if (user.role !== 'admin' && user.role !== 'secretario' && user.role !== 'barber') {
     return c.json({ error: 'Acesso negado.' }, 403);
   }
 
   const id = c.req.param('id');
   try {
-    const { type, description, amount, category, date, barber_id } = await c.req.json();
+    const { type, description, amount, category, date, barber_id, payment_method } = await c.req.json();
 
-    const existing = await c.env.DB.prepare("SELECT id FROM caixa WHERE id = ?").bind(id).first();
+    const existing = await c.env.DB.prepare("SELECT * FROM caixa WHERE id = ?").bind(id).first();
     if (!existing) {
       return c.json({ error: 'Lançamento não encontrado.' }, 404);
     }
 
-    if (type && !['receita', 'despesa'].includes(type)) {
-      return c.json({ error: 'Tipo inválido.' }, 400);
-    }
-    if (!description || !description.trim()) {
-      return c.json({ error: 'Descrição é obrigatória.' }, 400);
+    if (user.role === 'barber') {
+      const barber = await c.env.DB.prepare(
+        "SELECT id, user_id FROM barbers WHERE user_id = ? OR id = ?"
+      ).bind(user.id, user.id).first();
+      const barberId = barber ? barber.id : user.id;
+
+      if (existing.barber_id && existing.barber_id !== barberId && existing.barber_id !== user.id) {
+        return c.json({ error: 'Ação não permitida para este barbeiro.' }, 403);
+      }
     }
 
-    const formattedDate = date ? date.replace('T', ' ') : undefined;
+    const newType = type || existing.type;
+    const newDesc = description ? description.trim().toUpperCase() : existing.description;
+    const newAmount = amount !== undefined && amount !== null && !isNaN(Number(amount)) ? Number(amount) : existing.amount;
+    const newCategory = category ? category.trim().toUpperCase() : existing.category;
+    const newBarberId = barber_id !== undefined ? (barber_id || null) : existing.barber_id;
+    const newDate = date ? date.replace('T', ' ') : existing.date;
+    const newPaymentMethod = payment_method !== undefined ? (payment_method ? payment_method.trim().toUpperCase() : null) : (existing.payment_method || null);
 
     await c.env.DB.prepare(`
       UPDATE caixa
-      SET type = ?, description = ?, amount = ?, category = ?, barber_id = ?, date = COALESCE(?, date), updated_at = datetime('now', 'localtime')
+      SET type = ?, description = ?, amount = ?, category = ?, barber_id = ?, date = ?, payment_method = ?, updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `).bind(
-      type,
-      description.trim().toUpperCase(),
-      Number(amount),
-      category ? category.trim().toUpperCase() : 'GERAL',
-      barber_id || null,
-      formattedDate || null,
+      newType,
+      newDesc,
+      newAmount,
+      newCategory,
+      newBarberId,
+      newDate,
+      newPaymentMethod,
       id
     ).run();
 
     return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 12.3.1 Atualizar Lançamento do Caixa por Agendamento
+app.put('/api/caixa/appointment/:appointmentId', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin' && user.role !== 'secretario' && user.role !== 'barber') {
+    return c.json({ error: 'Acesso negado.' }, 403);
+  }
+
+  const appointmentId = c.req.param('appointmentId');
+  try {
+    const { amount, payment_method } = await c.req.json();
+
+    const existing = await c.env.DB.prepare(
+      "SELECT * FROM caixa WHERE appointment_id = ? OR id = ?"
+    ).bind(appointmentId, 'cx-srv-' + appointmentId).first();
+
+    if (!existing) {
+      return c.json({ error: 'Lançamento do caixa não encontrado para este agendamento.' }, 404);
+    }
+
+    if (user.role === 'barber') {
+      const barber = await c.env.DB.prepare(
+        "SELECT id, user_id FROM barbers WHERE user_id = ? OR id = ?"
+      ).bind(user.id, user.id).first();
+      const barberId = barber ? barber.id : user.id;
+
+      if (existing.barber_id && existing.barber_id !== barberId && existing.barber_id !== user.id) {
+        return c.json({ error: 'Ação não permitida para este barbeiro.' }, 403);
+      }
+    }
+
+    const newAmount = amount !== undefined && amount !== null && !isNaN(Number(amount)) ? Number(amount) : existing.amount;
+    const newPaymentMethod = payment_method !== undefined ? (payment_method ? payment_method.trim().toUpperCase() : null) : (existing.payment_method || null);
+
+    await c.env.DB.prepare(`
+      UPDATE caixa
+      SET amount = ?, payment_method = ?, updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).bind(newAmount, newPaymentMethod, existing.id).run();
+
+    return c.json({ success: true, caixa_id: existing.id, amount: newAmount, payment_method: newPaymentMethod });
   } catch (e) {
     return c.json({ error: e.message }, 500);
   }
@@ -2550,32 +2684,7 @@ app.delete('/api/caixa/:id', authMiddleware, async (c) => {
   }
 });
 
-// --- Endpoints de Produtos e Vendas ---
-
-app.get('/api/products', async (c) => {
-  try {
-    const { results } = await c.env.DB.prepare(
-      "SELECT id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo, created_at, updated_at FROM products ORDER BY name ASC"
-    ).all();
-    return c.json(results);
-  } catch (e) {
-    return c.json({ error: e.message }, 500);
-  }
-});
-
-app.post('/api/products', authMiddleware, async (c) => {
-  try {
-    const { name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo } = await c.req.json();
-    if (!name || !name.trim()) return c.json({ error: 'Nome do produto é obrigatório.' }, 400);
-    const id = 'prod-' + crypto.randomUUID();
-    await c.env.DB.prepare(
-      "INSERT INTO products (id, name, description, supplier, supplier_contact_name, supplier_contact_phone, cost_price, sale_price, stock_quantity, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, name.trim(), description || null, supplier || null, supplier_contact_name || null, supplier_contact_phone || null, Number(cost_price) || 0, Number(sale_price) || 0, Number(stock_quantity) || 0, photo || null).run();
-    return c.json({ success: true, id });
-  } catch (e) {
-    return c.json({ error: e.message }, 500);
-  }
-});
+// --- Endpoints de Vendas ---
 
 app.get('/api/sales/all', async (c) => {
   try {

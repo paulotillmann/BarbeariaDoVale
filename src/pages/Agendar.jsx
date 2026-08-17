@@ -135,8 +135,8 @@ export default function Agendar() {
     if (dayOfWeek === 0) return [] // Domingo fechado
 
     const slots = []
-    const startHour = 9
-    const endHour = dayOfWeek === 6 ? 16 : 20 // Horários das 09:00 às 20:00 (Sábados até 16:00)
+    const startHour = dayOfWeek === 6 ? 8 : 9
+    const endHour = dayOfWeek === 6 ? 19 : 20 // Horários: Seg-Sex das 09:00 às 20:00, Sábados das 08:00 às 19:00
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -174,13 +174,13 @@ export default function Agendar() {
     const requestedDuration = selectedServices.length > 0 ? totalDurationMinutes : 30
     const slotEndMinutes = slotStartMinutes + requestedDuration
 
-    // Verificar se ultrapassa o horário de funcionamento da barbearia (20:00)
+    // Verificar se ultrapassa o horário de funcionamento da barbearia
     const dateParts = dateString.split("-")
     if (dateParts.length === 3) {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 16 : 20
+      const closingHour = dayOfWeek === 6 ? 19 : 20
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }

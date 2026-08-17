@@ -23,6 +23,7 @@ import Sidebar from "../components/Sidebar.jsx"
 import CEventCalendar2 from "../components/CEventCalendar2.jsx"
 import CCalendar24 from "../components/CCalendar24.jsx"
 import SaleModal from "../components/SaleModal.jsx"
+import CaixaEntryModal from "../components/CaixaEntryModal.jsx"
 
 export default function AgendaGrid() {
   const { user, token } = useAuth()
@@ -40,6 +41,11 @@ export default function AgendaGrid() {
   const [existingSaleData, setExistingSaleData] = useState(null)
   const [productsList, setProductsList] = useState([])
   const [salesList, setSalesList] = useState([])
+
+  // Estados para Modal de Lançamento do Caixa
+  const [isCaixaModalOpen, setIsCaixaModalOpen] = useState(false)
+  const [selectedCaixaAppt, setSelectedCaixaAppt] = useState(null)
+  const [caixaList, setCaixaList] = useState([])
 
   // Detecção de Dispositivo Móvel (tela < 768px) e Seleção de Barbeiro no Mobile
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false)
@@ -91,7 +97,7 @@ export default function AgendaGrid() {
       const dateParts = dateString.split("-")
       if (dateParts.length === 3) {
         const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
-        if (dateObj.getDay() === 6) closingTime = "16:00"
+        if (dateObj.getDay() === 6) closingTime = "19:00"
       }
     }
 
@@ -236,13 +242,14 @@ export default function AgendaGrid() {
       try {
         const headers = { Authorization: `Bearer ${token}` }
 
-        const [apptRes, srvRes, barbRes, custRes, prodRes, salesRes] = await Promise.all([
+        const [apptRes, srvRes, barbRes, custRes, prodRes, salesRes, caixaRes] = await Promise.all([
           fetch(`${API_URL}/api/appointments`, { headers }),
           fetch(`${API_URL}/api/services`),
           fetch(`${API_URL}/api/barbers`),
           fetch(`${API_URL}/api/customers`, { headers }),
           fetch(`${API_URL}/api/products`, { headers }),
-          fetch(`${API_URL}/api/sales/all`, { headers })
+          fetch(`${API_URL}/api/sales/all`, { headers }),
+          fetch(`${API_URL}/api/caixa`, { headers })
         ])
 
         if (apptRes.ok) setAppointments(await apptRes.json())
@@ -269,6 +276,10 @@ export default function AgendaGrid() {
           if (Array.isArray(prodsData)) setProductsList(prodsData)
         }
         if (salesRes.ok) setSalesList(await salesRes.json())
+        if (caixaRes.ok) {
+          const cData = await caixaRes.json()
+          setCaixaList(cData.transactions || cData || [])
+        }
       } catch (err) {
         console.error("Erro ao carregar dados da agenda grid:", err)
       }
@@ -276,6 +287,36 @@ export default function AgendaGrid() {
 
     fetchData()
   }, [user, token, navigate])
+
+  // Handlers para o Modal de Lançamento do Caixa
+  const handleOpenCaixaModal = (appt) => {
+    setSelectedCaixaAppt(appt)
+    setIsCaixaModalOpen(true)
+  }
+
+  const handleCaixaSaveSuccess = (updatedInfo) => {
+    setAppointments(prev => prev.map(a => {
+      if (a.id === updatedInfo.appointmentId) {
+        return {
+          ...a,
+          caixa_id: updatedInfo.caixa_id,
+          caixa_amount: updatedInfo.amount,
+          caixa_payment_method: updatedInfo.payment_method
+        }
+      }
+      return a
+    }))
+    setCaixaList(prev => prev.map(c => {
+      if (c.id === updatedInfo.caixa_id || c.appointment_id === updatedInfo.appointmentId) {
+        return {
+          ...c,
+          amount: updatedInfo.amount,
+          payment_method: updatedInfo.payment_method
+        }
+      }
+      return c
+    }))
+  }
 
   // Handlers para o Modal de Vendas
   const handleOpenSaleModal = async (appt) => {
@@ -433,8 +474,8 @@ export default function AgendaGrid() {
     if (dayOfWeek === 0) return []
 
     const slots = []
-    let startHour = 9
-    let endHour = dayOfWeek === 6 ? 16 : 20
+    let startHour = dayOfWeek === 6 ? 8 : 9
+    let endHour = dayOfWeek === 6 ? 19 : 20
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, "0")}:00`)
@@ -489,7 +530,7 @@ export default function AgendaGrid() {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 16 : 20
+      const closingHour = dayOfWeek === 6 ? 19 : 20
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }
@@ -898,7 +939,7 @@ export default function AgendaGrid() {
                 const d = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
                 const day = d.getDay()
                 if (day === 0) return "Barbearia fechada aos domingos."
-                if (day === 6) return "Visão em grade de horários de sábado (09h às 16h) organizados por colunas de barbeiro."
+                if (day === 6) return "Visão em grade de horários de sábado (08h às 19h) organizados por colunas de barbeiro."
                 return "Visão em grade de horários (09h às 20h) organizados por colunas de barbeiro."
               })()}
             </p>
@@ -999,12 +1040,14 @@ export default function AgendaGrid() {
               barbers={displayedBarbers}
               appointments={appointments}
               sales={salesList}
+              caixaTransactions={caixaList}
               selectedDate={selectedDate}
               isMobile={isMobile}
               onSelectSlot={handleSelectSlot}
               onCancelSlot={handleOpenCancelRangeModal}
               onSelectAppointment={handleSelectAppointment}
               onOpenSaleModal={handleOpenSaleModal}
+              onOpenCaixaModal={handleOpenCaixaModal}
             />
           )
         })()}
@@ -1646,6 +1689,18 @@ export default function AgendaGrid() {
         products={productsList}
         onSaveSale={handleSaveSale}
         onDeleteSale={handleDeleteSale}
+      />
+
+      {/* MODAL DE LANÇAMENTO DO CAIXA */}
+      <CaixaEntryModal
+        isOpen={isCaixaModalOpen}
+        onClose={() => {
+          setIsCaixaModalOpen(false)
+          setSelectedCaixaAppt(null)
+        }}
+        appointment={selectedCaixaAppt}
+        token={token}
+        onSaveSuccess={handleCaixaSaveSuccess}
       />
     </div>
   )

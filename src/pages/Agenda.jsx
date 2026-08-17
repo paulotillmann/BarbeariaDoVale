@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth, API_URL } from "../context/AuthContext.jsx"
-import { Calendar as CalendarIcon, Clock, User, Plus, AlertTriangle, CheckCircle2, Check, Search, UserPlus, X, Trash2, Edit3, UserX, RotateCcw, Radio } from "lucide-react"
+import { Calendar as CalendarIcon, Clock, User, Plus, AlertTriangle, CheckCircle2, Check, Search, UserPlus, X, Trash2, Edit3, UserX, RotateCcw, Radio, ReceiptText } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
+import CaixaEntryModal from "../components/CaixaEntryModal.jsx"
 
 export default function Agenda() {
   const { user, token } = useAuth()
@@ -13,6 +14,10 @@ export default function Agenda() {
   const [barbers, setBarbers] = useState([])
   const [customers, setCustomers] = useState([])
   const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(true)
+
+  // Estados para Modal de Lançamento do Caixa
+  const [isCaixaModalOpen, setIsCaixaModalOpen] = useState(false)
+  const [selectedCaixaAppt, setSelectedCaixaAppt] = useState(null)
 
   // Calendário e Agenda states
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(new Date())
@@ -167,8 +172,8 @@ export default function Agenda() {
     if (dayOfWeek === 0) return []
 
     const slots = []
-    let startHour = 9
-    let endHour = dayOfWeek === 6 ? 16 : 20
+    let startHour = dayOfWeek === 6 ? 8 : 9
+    let endHour = dayOfWeek === 6 ? 19 : 20
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -206,7 +211,7 @@ export default function Agenda() {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 16 : 20
+      const closingHour = dayOfWeek === 6 ? 19 : 20
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }
@@ -271,6 +276,25 @@ export default function Agenda() {
     } catch (err) {
       console.error("Erro ao atualizar lista de clientes:", err)
     }
+  }
+
+  const handleOpenCaixaModal = (appt) => {
+    setSelectedCaixaAppt(appt)
+    setIsCaixaModalOpen(true)
+  }
+
+  const handleCaixaSaveSuccess = (updatedInfo) => {
+    setAppointments(prev => prev.map(a => {
+      if (a.id === updatedInfo.appointmentId) {
+        return {
+          ...a,
+          caixa_id: updatedInfo.caixa_id,
+          caixa_amount: updatedInfo.amount,
+          caixa_payment_method: updatedInfo.payment_method
+        }
+      }
+      return a
+    }))
   }
 
   const normalizeText = (str) => {
@@ -1101,6 +1125,34 @@ export default function Agenda() {
                                     {appt.barber_name ? appt.barber_name.split(' ')[0] : 'Barbeiro'}
                                   </span>
                                 </div>
+
+                                {/* Botão de Lançamento de Caixa (Exibido apenas se houver lançamento no caixa) */}
+                                {Boolean(appt.caixa_id) && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleOpenCaixaModal(appt)
+                                    }}
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                                      appt.caixa_payment_method
+                                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30"
+                                        : "bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
+                                    }`}
+                                    title={
+                                      appt.caixa_payment_method
+                                        ? `Caixa: R$ ${Number(appt.caixa_amount || appt.service_price || 0).toFixed(2)} (${appt.caixa_payment_method}) - Clique para editar`
+                                        : `Caixa: R$ ${Number(appt.caixa_amount || appt.service_price || 0).toFixed(2)} - Clique para informar forma de pagamento`
+                                    }
+                                  >
+                                    <ReceiptText size={12} />
+                                    <span>
+                                      {appt.caixa_payment_method
+                                        ? `${appt.caixa_payment_method === 'CARTAO_CREDITO' ? 'CRÉD' : appt.caixa_payment_method === 'CARTAO_DEBITO' ? 'DÉB' : appt.caixa_payment_method}: R$ ${Number(appt.caixa_amount || appt.service_price || 0).toFixed(2)}`
+                                        : `Caixa: R$ ${Number(appt.caixa_amount || appt.service_price || 0).toFixed(2)}`}
+                                    </span>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1569,6 +1621,18 @@ export default function Agenda() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE LANÇAMENTO DO CAIXA */}
+      <CaixaEntryModal
+        isOpen={isCaixaModalOpen}
+        onClose={() => {
+          setIsCaixaModalOpen(false)
+          setSelectedCaixaAppt(null)
+        }}
+        appointment={selectedCaixaAppt}
+        token={token}
+        onSaveSuccess={handleCaixaSaveSuccess}
+      />
     </div>
   )
 }

@@ -486,8 +486,8 @@ export default function Home() {
                   <Clock className="w-5 h-5 mt-1 flex-shrink-0 text-primary" />
                   <div className="leading-relaxed">
                     <p className="font-semibold text-foreground mb-2 tracking-wide">Horário de Funcionamento</p>
-                    <p>Seg - Sex: 08:00 - 20:00</p>
-                    <p>Sábado: 09:00 - 16:00</p>
+                    <p>Seg - Sex: 09:00 - 20:00</p>
+                    <p>Sábado: 08:00 - 19:00</p>
                     <p>Domingo: Fechado</p>
                   </div>
                 </li>

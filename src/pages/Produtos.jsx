@@ -19,46 +19,6 @@ import {
 } from "lucide-react"
 import Sidebar from "../components/Sidebar.jsx"
 
-// Produtos de demonstração padronizados (fallback com fotos em ambiente de barbearia)
-const INITIAL_DEFAULT_PRODUCTS = [
-  {
-    id: "prod-pomada-modeladora-dovale",
-    name: "Pomada Modeladora Do Vale Effect Matte 100g",
-    description: "Pomada modeladora capilar com efeito fosco e fixação forte durante todo o dia. Fragrância amadeirada exclusiva.",
-    supplier: "Barber Supply Brasil",
-    supplier_contact_name: "Carlos Eduardo",
-    supplier_contact_phone: "(34) 99888-7766",
-    cost_price: 25.00,
-    sale_price: 55.00,
-    stock_quantity: 20,
-    photo: "/assets/pomada_modeladora_barbearia.png"
-  },
-  {
-    id: "prod-oleo-hidratante-dovale",
-    name: "Óleo Hidratante para Barba Do Vale 60ml",
-    description: "Óleo enriquecido com Argan e Jojoba para nutrição profunda, maciez e brilho natural dos fios da barba.",
-    supplier: "Cosméticos Vale Gold",
-    supplier_contact_name: "Mariana Souza",
-    supplier_contact_phone: "(34) 99777-5544",
-    cost_price: 20.00,
-    sale_price: 45.00,
-    stock_quantity: 15,
-    photo: "/assets/oleo_barba_barbearia.png"
-  },
-  {
-    id: "prod-baboon-matte-clay",
-    name: "Pomada Baboon Matte Clay 80g",
-    description: "Pomada modeladora de efeito fosco natural e alta fixação. Ideal para penteados estruturados com acabamento opaco.",
-    supplier: "Baboon Cosmetics",
-    supplier_contact_name: "Eduardo Baboon",
-    supplier_contact_phone: "(34) 99888-1122",
-    cost_price: 30.00,
-    sale_price: 65.00,
-    stock_quantity: 18,
-    photo: "/assets/prod_baboon_pomada.png"
-  }
-]
-
 // Componente robusto de imagem do produto com tratamento de erro e fallback
 function ProductThumbnail({ photo, name, onPreview }) {
   const [hasError, setHasError] = useState(false)
@@ -94,7 +54,7 @@ function ProductThumbnail({ photo, name, onPreview }) {
 export default function Produtos() {
   const { user, token } = useAuth()
 
-  const [products, setProducts] = useState(INITIAL_DEFAULT_PRODUCTS)
+  const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
 
@@ -133,17 +93,13 @@ export default function Produtos() {
       })
       if (res.ok) {
         const data = await res.json()
-        if (Array.isArray(data) && data.length > 0) {
-          setProducts(data)
-        } else {
-          setProducts(INITIAL_DEFAULT_PRODUCTS)
-        }
+        setProducts(Array.isArray(data) ? data : [])
       } else {
-        setProducts(INITIAL_DEFAULT_PRODUCTS)
+        setProducts([])
       }
     } catch (err) {
       console.error("Erro ao carregar produtos:", err)
-      setProducts(INITIAL_DEFAULT_PRODUCTS)
+      setProducts([])
     } finally {
       setLoading(false)
     }
@@ -406,7 +362,7 @@ export default function Produtos() {
   }
 
   // Filtragem local dos produtos com garantia de array
-  const safeProducts = Array.isArray(products) ? products : INITIAL_DEFAULT_PRODUCTS
+  const safeProducts = Array.isArray(products) ? products : []
   const filteredProducts = safeProducts.filter(p => {
     const q = searchTerm.toLowerCase().trim()
     if (!q) return true
