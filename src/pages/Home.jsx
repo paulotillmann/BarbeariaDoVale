@@ -265,17 +265,32 @@ export default function Home() {
                 : (svc.price ? String(svc.price) : "R$ 0,00")
 
               const icon = getServiceIcon(svc.name || svc.title, svc.id)
+              const isComboPromo = svc.id === "srv-combo"
 
               return (
                 <div
                   key={svc.id || i}
-                  className="rounded-2xl border border-gold-subtle glass-card shadow-elevated hover:-translate-y-2 transition-all duration-500 group flex flex-col justify-between overflow-hidden animate-slide-up"
+                  className={`rounded-2xl border ${isComboPromo ? "border-primary/40 shadow-gold/10" : "border-gold-subtle"} glass-card shadow-elevated hover:-translate-y-2 transition-all duration-500 group flex flex-col justify-between overflow-hidden animate-slide-up relative`}
                   style={{ animationDelay: `${i * 0.1}s` }}
                 >
                   <div className="p-8 md:p-10 flex-1 flex flex-col">
-                    {/* Icon Frame - Premium */}
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/15 to-accent/15 border border-gold-subtle flex items-center justify-center text-primary mb-8 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-500">
-                      {icon}
+                    {/* Top Row: Icon Frame + Promotional Badge */}
+                    <div className="flex items-start justify-between gap-4 mb-8">
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/15 to-accent/15 border border-gold-subtle flex items-center justify-center text-primary group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-500 shrink-0">
+                        {icon}
+                      </div>
+                      {isComboPromo && (
+                        <div className="flex flex-col items-end text-right">
+                          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-red-500/15 border border-red-500/50 text-red-500 text-[11px] font-extrabold tracking-wider uppercase shadow-sm shadow-red-500/10 animate-pulse">
+                            <Sparkles className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                            <span className="tracking-widest">MAIS VENDIDO</span>
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground/80 line-through font-medium">De R$ 110,00</span>
+                            <span className="text-xs font-bold text-primary bg-primary/15 px-2 py-0.5 rounded-md border border-primary/30">Por R$ 80,00</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {/* Title */}
                     <h3 className="font-display text-xl lg:text-2xl font-bold mb-4 tracking-wide">{title}</h3>
@@ -289,7 +304,14 @@ export default function Home() {
                         <Clock className="w-5 h-5 text-primary" />
                         {durationText}
                       </div>
-                      <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid text-right">{priceFormatted}</div>
+                      {isComboPromo ? (
+                        <div className="text-right">
+                          <div className="text-xs text-muted-foreground/80 line-through font-medium -mb-0.5">De R$ 110,00</div>
+                          <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid">R$ 80,00</div>
+                        </div>
+                      ) : (
+                        <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid text-right">{priceFormatted}</div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../context/AuthContext.jsx"
-import { LogIn, UserPlus, Phone, Lock, User, AlertCircle, ArrowLeft, Mail, Eye, EyeOff } from "lucide-react"
+import { LogIn, UserPlus, Phone, Lock, User, AlertCircle, CheckCircle2, ArrowLeft, Mail, Eye, EyeOff } from "lucide-react"
 
 export default function Login() {
-  const { user, login, register } = useAuth()
+  const { user, login, register, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   
@@ -19,6 +19,7 @@ export default function Login() {
   const [loginKey, setLoginKey] = useState("") // Para login: aceita e-mail ou telefone
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [successMessage, setSuccessMessage] = useState("")
   const [loading, setLoading] = useState(false)
 
   const [showPassword, setShowPassword] = useState(false)
@@ -34,24 +35,27 @@ export default function Login() {
   }, [])
 
   useEffect(() => {
-    // Se o usuário já estiver logado, barbeiros vão para a agenda-barbeiros; os demais seguem a lógica por dispositivo
+    // Se o usuário já estiver logado
     if (user) {
-      if (user.role === "barber") {
+      if (user.role === "client") {
+        logout()
+        setError("O perfil de cliente não possui acesso ao painel do sistema.")
+      } else if (user.role === "barber") {
         navigate("/agenda-barbeiros")
-      } else {
+      } else if (user.role === "admin" || user.role === "secretario") {
         const isMobile = window.innerWidth < 768
         navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
       }
     }
-  }, [user, navigate])
+  }, [user, navigate, logout])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError("")
+    setSuccessMessage("")
     setLoading(true)
 
     try {
-      let loggedUser = null
       if (isRegister) {
         if (!name.trim()) {
           setError("O nome é obrigatório.")
@@ -66,7 +70,19 @@ export default function Login() {
           return
         }
 
-        loggedUser = await register(name, cleanPhone, email.trim() || null, password, "client")
+        await register(name, cleanPhone, email.trim() || null, password, "client")
+
+        // Limpar campos de cadastro e retornar para a tela de login
+        const registeredKey = cleanPhone || (email.trim() || "")
+        setName("")
+        setPhone("")
+        setEmail("")
+        setPassword("")
+        setLoginKey(registeredKey)
+        setIsRegister(false)
+        setSuccessMessage("Conta criada com sucesso! Faça login para continuar.")
+        setLoading(false)
+        return
       } else {
         if (!loginKey.trim()) {
           setError("Por favor, insira seu telefone ou e-mail.")
@@ -74,19 +90,26 @@ export default function Login() {
           return
         }
 
-        loggedUser = await login(loginKey.trim(), password)
+        const loggedUser = await login(loginKey.trim(), password)
+        if (loggedUser?.role === "client") {
+          logout()
+          setError("O perfil de cliente não possui acesso ao painel do sistema.")
+          setLoading(false)
+          return
+        }
+
         if (rememberMe) {
           localStorage.setItem("rememberedLoginKey", loginKey.trim())
         } else {
           localStorage.removeItem("rememberedLoginKey")
         }
-      }
-      const targetRole = loggedUser?.role || user?.role
-      if (targetRole === "barber") {
-        navigate("/agenda-barbeiros")
-      } else {
-        const isMobile = window.innerWidth < 768
-        navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
+
+        if (loggedUser?.role === "barber") {
+          navigate("/agenda-barbeiros")
+        } else {
+          const isMobile = window.innerWidth < 768
+          navigate(isMobile ? "/agenda-barbeiros" : "/dashboard")
+        }
       }
     } catch (err) {
       setError(err.message || "Ocorreu um erro. Tente novamente.")
@@ -146,6 +169,13 @@ export default function Login() {
             <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-xl p-4 mb-6 animate-fade-in">
               <AlertCircle size={20} className="shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm rounded-xl p-4 mb-6 animate-fade-in">
+              <CheckCircle2 size={20} className="shrink-0 text-emerald-400" />
+              <span>{successMessage}</span>
             </div>
           )}
 
@@ -287,6 +317,7 @@ export default function Login() {
               onClick={() => {
                 setIsRegister(!isRegister)
                 setError("")
+                setSuccessMessage("")
               }}
               className="text-primary hover:text-accent font-semibold transition-colors cursor-pointer"
             >

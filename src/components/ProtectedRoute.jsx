@@ -7,7 +7,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
   if (loading) return null
 
-  if (!user) {
+  if (!user || user.role === "client") {
     return <Navigate to="/login" replace />
   }
 

@@ -19,7 +19,7 @@ export default function Sidebar() {
     }
   }, [isCollapsed])
 
-  if (!user) return null
+  if (!user || user.role === 'client') return null
 
   const baseSidebarOptions = [
     { id: "dashboard", label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={20} /> },

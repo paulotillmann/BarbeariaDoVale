@@ -30,7 +30,7 @@ export default function Navbar() {
     }
   }
 
-  if (user) return null
+  if (user && user.role !== 'client') return null
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/70 backdrop-blur-xl border-b border-gold-subtle transition-all duration-500">

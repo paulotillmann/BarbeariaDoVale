@@ -486,9 +486,14 @@ export default function AgendaGrid() {
 
   const isTimeSlotPast = (dateString, timeString) => {
     if (!dateString || !timeString) return false
+    const [h, m] = timeString.split(":").map(Number)
+    if (isNaN(h) || isNaN(m)) return false
     const appointmentDateTime = new Date(`${dateString}T${timeString}`)
+    const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
+    const extraMinutes = isStaff ? 30 : 0
+    const slotExpiration = new Date(appointmentDateTime.getTime() + extraMinutes * 60000)
     const now = new Date()
-    return appointmentDateTime < now
+    return slotExpiration <= now
   }
 
   // Cálculo acumulado de duração e preço para múltiplos serviços
@@ -1043,6 +1048,7 @@ export default function AgendaGrid() {
               caixaTransactions={caixaList}
               selectedDate={selectedDate}
               isMobile={isMobile}
+              userRole={user?.role}
               onSelectSlot={handleSelectSlot}
               onCancelSlot={handleOpenCancelRangeModal}
               onSelectAppointment={handleSelectAppointment}

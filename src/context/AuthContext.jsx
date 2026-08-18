@@ -163,7 +163,7 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
-  const register = async (name, phone, email, password, role = "secretario") => {
+  const register = async (name, phone, email, password, role = "client") => {
     const response = await fetch(`${API_URL}/api/auth/register`, {
       method: "POST",
       headers: {
@@ -177,10 +177,6 @@ export function AuthProvider({ children }) {
       throw new Error(data.error || "Erro ao registrar conta.")
     }
 
-    localStorage.setItem("token", data.token)
-    localStorage.setItem("last_activity", Date.now().toString())
-    setToken(data.token)
-    setUser(data.user)
     return data.user
   }
 

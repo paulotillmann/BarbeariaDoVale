@@ -12,6 +12,7 @@ export default function CEventCalendar2({
   caixaTransactions = [],
   selectedDate = "",
   isMobile = false,
+  userRole = "",
   onSelectSlot,
   onCancelSlot,
   onSelectAppointment,
@@ -301,8 +302,14 @@ export default function CEventCalendar2({
   // Verificar se o slot já passou em relação ao horário atual
   const isSlotPast = (slotTime) => {
     if (!selectedDate || !slotTime) return false
+    const [h, m] = slotTime.split(":").map(Number)
+    if (isNaN(h) || isNaN(m)) return false
     const slotDateTime = new Date(`${selectedDate}T${slotTime}`)
-    return slotDateTime < now
+    const isStaff = userRole === "admin" || userRole === "barber" || userRole === "secretario"
+    // Para administradores, barbeiros e secretários, a janela de 30 min do horário atual permanece aberta
+    const extraMinutes = isStaff ? 30 : 0
+    const slotExpiration = new Date(slotDateTime.getTime() + extraMinutes * 60000)
+    return slotExpiration <= now
   }
 
   // Verificar se o slot é o início de um agendamento

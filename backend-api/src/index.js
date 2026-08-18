@@ -201,7 +201,8 @@ app.post('/api/auth/register', async (c) => {
 
   const cleanPhone = phone ? phone.replace(/\D/g, "") : null;
   const cleanEmail = email ? email.trim().toLowerCase() : null;
-  const targetRole = role && ['secretario', 'barber', 'admin'].includes(role) ? role : 'secretario';
+  const validRoles = ['client', 'barber', 'admin', 'secretario'];
+  const targetRole = role && validRoles.includes(role) ? role : 'client';
   const passwordHash = await hashPassword(password);
   const userId = crypto.randomUUID();
 
