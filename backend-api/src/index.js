@@ -1096,7 +1096,7 @@ app.post('/api/appointments', authMiddleware, async (c) => {
         // Enviar mensagem de WhatsApp de confirmação ao Cliente
         if (client && client.phone && servicesText) {
           const barberDisplayName = barber && barber.name ? barber.name : 'Barbearia Do Vale';
-          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${client.name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barberDisplayName}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nNos vemos em breve! 👊🔥`;
+          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${client.name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barberDisplayName}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nNos vemos em breve para dar aquele trato no visual! 👊🔥\n\n━━━━━━━━━━━━━━━━━━\n📲 *Agende seu próximo horário online quando quiser:*\n👉 https://barbeariadovale.pages.dev\n_Rápido, prático e disponível 24h por dia!_ 💈✨`;
           const sent = await sendWhatsApp(c.env, client.phone, confirmationText);
           await c.env.DB.prepare(
             "INSERT INTO whatsapp_logs (id, appointment_id, message_type, phone, status, sent_at) VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))"
@@ -1283,7 +1283,7 @@ app.post('/api/appointments/quick', async (c) => {
         // Enviar mensagem de WhatsApp de confirmação ao Cliente
         if (phone && servicesText) {
           const barberDisplayName = barber && barber.name ? barber.name : 'Barbearia Do Vale';
-          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barberDisplayName}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\n⚠️ _Se precisar reagendar ou cancelar, por favor avise com antecedência._\n\nNos vemos em breve para dar aquele tapa no visual! 👊🔥`;
+          const confirmationText = `🌟 *AGENDAMENTO CONFIRMADO!* 🌟\n\nOlá, *${name}*, seu horário na *Barbearia Do Vale* está reservado com sucesso! 🎉\n\n✂️ *Detalhes do seu atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${servicesText}\n💈 *Profissional:* ${barberDisplayName}\n📅 *Data/Hora:* ${formattedDateTime}\n💵 *Valor:* R$ ${totalPrice.toFixed(2).replace('.', ',')}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\n⚠️ _Se precisar reagendar ou cancelar, por favor avise com antecedência._\n\nNos vemos em breve para dar aquele tapa no visual! 👊🔥\n\n━━━━━━━━━━━━━━━━━━\n📲 *Agende seu próximo horário online quando quiser:*\n👉 https://barbeariadovale.pages.dev\n_Rápido, prático e disponível 24h por dia!_ 💈✨`;
           const sent = await sendWhatsApp(c.env, phone, confirmationText);
           await c.env.DB.prepare(
             "INSERT INTO whatsapp_logs (id, appointment_id, message_type, phone, status, sent_at) VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))"
@@ -1379,7 +1379,7 @@ app.put('/api/appointments/:id/cancel', authMiddleware, async (c) => {
 
     if (appointment.phone) {
       const formattedDateTime = formatDateTimeToBR(appointment.appointment_time);
-      const cancellationText = `🚨 *AGENDAMENTO CANCELADO* 🚨\n\nOlá, *${appointment.client_name}*.\nConfirmamos que o seu agendamento para o serviço *${appointment.service_name}* no dia *${formattedDateTime}* foi *CANCELADO* com sucesso. 💸\n\nSe desejar agendar um novo horário, estamos à disposição! 💈✨\n🔗 https://barbeariadovale.pages.dev`;
+      const cancellationText = `🚨 *AGENDAMENTO CANCELADO* 🚨\n\nOlá, *${appointment.client_name}*.\nConfirmamos que o seu agendamento para o serviço *${appointment.service_name}* no dia *${formattedDateTime}* foi *CANCELADO* com sucesso.\n\nSentiremos sua falta! Mas quando estiver pronto para renovar o estilo, escolha o melhor momento para você: 💈✂️\n\n━━━━━━━━━━━━━━━━━━\n📲 *Agende um novo horário online a qualquer momento:*\n👉 https://barbeariadovale.pages.dev\n_Rápido, prático e disponível 24h por dia!_ 👊🔥`;
       const sent = await sendWhatsApp(c.env, appointment.phone, cancellationText);
 
       await c.env.DB.prepare(
@@ -2930,7 +2930,7 @@ export class AppointmentScheduler extends DurableObject {
 
       if (appointment && appointment.status === 'confirmed' && appointment.client_phone) {
         const formattedDateTime = formatDateTimeToBR(appointment.appointment_time);
-        const reminderText = `⏰ *LEMBRETE DE AGENDAMENTO* ⏰\n\nOlá, *${appointment.client_name}*! Passando para te lembrar que seu horário na *Barbearia Do Vale* está chegando! 😎\n\n✂️ *Dados do atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${appointment.service_name}\n📅 *Data/Hora:* ${formattedDateTime}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nTe esperamos para dar aquele trato no visual! 👊💈`;
+        const reminderText = `⏰ *LEMBRETE DE AGENDAMENTO* ⏰\n\nOlá, *${appointment.client_name}*! Passando para te lembrar que seu horário na *Barbearia Do Vale* está chegando! 😎\n\n✂️ *Dados do atendimento:*\n━━━━━━━━━━━━━━━━━━\n💼 *Serviço(s):* ${appointment.service_name}\n📅 *Data/Hora:* ${formattedDateTime}\n━━━━━━━━━━━━━━━━━━\n\n📍 *Endereço:*\nAv. Senador Melo Viana, 709 - Goiás, Araguari/MG\n\nTe esperamos para dar aquele trato no visual! 👊💈\n\n━━━━━━━━━━━━━━━━━━\n📲 *Agende seus próximos horários no nosso portal:*\n👉 https://barbeariadovale.pages.dev\n_Estilo e conveniência 24h na palma da sua mão!_ ✨`;
         const sent = await sendWhatsApp(this.env, appointment.client_phone, reminderText);
 
         await this.env.DB.prepare(
