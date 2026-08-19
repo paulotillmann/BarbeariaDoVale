@@ -547,18 +547,24 @@ export default function Dashboard() {
     })
   }, [filteredCaixa])
 
-  // 2. Dados para o Gráfico de Desempenho por Barbeiro (Bar Chart)
+  // 2. Dados para o Gráfico de Desempenho por Barbeiro (Bar Chart: Serviços, Produtos e Comissão)
   const barberPerformanceData = useMemo(() => {
     const barbMap = {}
 
     barbers.forEach((b) => {
       barbMap[b.name] = {
         name: b.name,
+        barberId: b.id,
+        serviceCommissionPct: Number(b.service_commission ?? b.serviceCommission ?? 0),
+        productCommissionPct: Number(b.product_commission ?? b.productCommission ?? 0),
         faturamento: 0,
         atendimentoValor: 0,
         atendimentoQtd: 0,
         produtosValor: 0,
-        produtosQtd: 0
+        produtosQtd: 0,
+        comissaoServicos: 0,
+        comissaoProdutos: 0,
+        comissaoTotal: 0
       }
     })
 
@@ -567,13 +573,25 @@ export default function Dashboard() {
       if (t.type !== "receita") return
       const barbName = t.barber_name || "Geral"
       if (!barbMap[barbName]) {
+        const matchedBarber = barbers.find(
+          (b) =>
+            (b.name && barbName && b.name.trim().toLowerCase().includes(barbName.trim().toLowerCase())) ||
+            (b.name && barbName && barbName.trim().toLowerCase().includes(b.name.trim().toLowerCase())) ||
+            (t.barber_id && String(b.id) === String(t.barber_id))
+        )
         barbMap[barbName] = {
           name: barbName,
+          barberId: matchedBarber ? matchedBarber.id : t.barber_id || null,
+          serviceCommissionPct: Number(matchedBarber?.service_commission ?? matchedBarber?.serviceCommission ?? 0),
+          productCommissionPct: Number(matchedBarber?.product_commission ?? matchedBarber?.productCommission ?? 0),
           faturamento: 0,
           atendimentoValor: 0,
           atendimentoQtd: 0,
           produtosValor: 0,
-          produtosQtd: 0
+          produtosQtd: 0,
+          comissaoServicos: 0,
+          comissaoProdutos: 0,
+          comissaoTotal: 0
         }
       }
 
@@ -595,8 +613,15 @@ export default function Dashboard() {
       barbMap[barbName].faturamento += val
     })
 
+    // Calcular comissões para cada barbeiro
+    Object.values(barbMap).forEach((item) => {
+      item.comissaoServicos = (item.atendimentoValor * item.serviceCommissionPct) / 100
+      item.comissaoProdutos = (item.produtosValor * item.productCommissionPct) / 100
+      item.comissaoTotal = item.comissaoServicos + item.comissaoProdutos
+    })
+
     return Object.values(barbMap).filter(
-      (item) => item.faturamento > 0 || item.atendimentoQtd > 0 || item.produtosQtd > 0
+      (item) => item.faturamento > 0 || item.atendimentoQtd > 0 || item.produtosQtd > 0 || item.comissaoTotal > 0
     )
   }, [barbers, filteredCaixa])
 
@@ -1336,10 +1361,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* SEGUNDA LINHA DE GRÁFICOS: TICKET MÉDIO DIÁRIO (2/3) X FATURAMENTO POR BARBEIRO (1/3) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Gráfico 2: Ticket Médio Diário de Vendas de Produtos x Serviços Realizados (2/3 da largura) */}
-          <div className="lg:col-span-2 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+        {/* SEGUNDA LINHA DE GRÁFICOS: TICKET MÉDIO DIÁRIO (50%) X DESEMPENHO POR BARBEIRO (50%) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Gráfico 2: Ticket Médio Diário de Vendas de Produtos x Serviços Realizados (50% da largura) */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3 flex-wrap gap-2">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
@@ -1353,15 +1378,15 @@ export default function Dashboard() {
             <DailyTicketTrendChart data={dailyTicketTrendData} />
           </div>
 
-          {/* Gráfico 3: Desempenho por Barbeiro (1/3 da largura) */}
-          <div className="lg:col-span-1 bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
+          {/* Gráfico 3: Desempenho por Barbeiro (50% da largura) */}
+          <div className="bg-card/40 backdrop-blur-sm border border-border/80 rounded-2xl p-6 shadow-elevated flex flex-col justify-between">
             <div className="flex items-center justify-between mb-4 border-b border-border/40 pb-3">
               <div>
                 <h3 className="font-bold text-base text-foreground font-display flex items-center gap-2">
-                  <Users size={18} className="text-primary" /> Faturamento por Barbeiro
+                  <Users size={18} className="text-primary" /> Faturamento & Comissões por Barbeiro
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Total de receita gerada por profissional no período.
+                  Total em serviços, vendas de produtos e comissão calculada por profissional no período.
                 </p>
               </div>
             </div>

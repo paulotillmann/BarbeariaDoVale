@@ -86,28 +86,59 @@ const FinancialTooltip = ({ active, payload, label }) => {
 // Tooltip customizado para o gráfico de barbeiros
 const BarberTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
-    const data = payload[0].payload
+    const data = payload[0]?.payload || {}
     return (
-      <div className="bg-[#18181b]/95 backdrop-blur-md border border-border/80 rounded-xl p-3.5 shadow-2xl text-xs space-y-2 min-w-[220px] z-50">
-        <p className="font-bold text-primary border-b border-border/40 pb-1.5 text-sm">{label}</p>
-
-        <div className="flex items-center justify-between font-bold text-foreground">
-          <span>Faturamento:</span>
-          <span className="text-green-400 font-mono font-black text-sm">{formatCurrency(data.faturamento)}</span>
+      <div className="bg-[#18181b]/95 backdrop-blur-md border border-border/80 rounded-xl p-3.5 shadow-2xl text-xs space-y-2.5 min-w-[260px] z-50">
+        <div className="flex items-center justify-between border-b border-border/40 pb-2">
+          <p className="font-bold text-foreground font-mono text-sm">{label}</p>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Desempenho</span>
         </div>
 
-        <div className="flex items-center justify-between text-muted-foreground text-[11px]">
-          <span>Atendimento:</span>
-          <span className="font-bold text-foreground font-mono">
-            {formatCurrency(data.atendimentoValor || 0)} ({data.atendimentoQtd || 0} {data.atendimentoQtd === 1 ? 'serviço' : 'serviços'})
-          </span>
+        <div className="flex items-center justify-between font-bold text-foreground bg-primary/10 p-2 rounded-lg border border-primary/20">
+          <span className="text-xs">Faturamento Bruto:</span>
+          <span className="text-primary font-mono font-black text-sm">{formatCurrency(data.faturamento)}</span>
         </div>
 
-        <div className="flex items-center justify-between text-muted-foreground text-[11px]">
-          <span>Produtos:</span>
-          <span className="font-bold text-foreground font-mono">
-            {formatCurrency(data.produtosValor || 0)} ({data.produtosQtd || 0} {data.produtosQtd === 1 ? 'item' : 'itens'})
+        <div className="space-y-2 pt-0.5">
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between text-muted-foreground text-[11px]">
+              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                <span className="w-2 h-2 rounded-full bg-[#FADD00] shrink-0"></span>
+                Serviços ({data.serviceCommissionPct || 0}% comissão):
+              </span>
+              <span className="font-bold text-[#FADD00] font-mono">
+                {formatCurrency(data.atendimentoValor || 0)}
+              </span>
+            </div>
+            <div className="text-[10px] text-muted-foreground pl-3.5 flex justify-between">
+              <span>{data.atendimentoQtd || 0} {data.atendimentoQtd === 1 ? 'atendimento' : 'atendimentos'}</span>
+              <span>Comissão: <strong className="text-foreground font-mono">{formatCurrency(data.comissaoServicos || 0)}</strong></span>
+            </div>
+          </div>
+
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between text-muted-foreground text-[11px]">
+              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                <span className="w-2 h-2 rounded-full bg-[#FFFFFF] shrink-0"></span>
+                Produtos ({data.productCommissionPct || 0}% comissão):
+              </span>
+              <span className="font-bold text-white font-mono">
+                {formatCurrency(data.produtosValor || 0)}
+              </span>
+            </div>
+            <div className="text-[10px] text-muted-foreground pl-3.5 flex justify-between">
+              <span>{data.produtosQtd || 0} {data.produtosQtd === 1 ? 'item' : 'itens'}</span>
+              <span>Comissão: <strong className="text-foreground font-mono">{formatCurrency(data.comissaoProdutos || 0)}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between font-bold border-t border-border/40 pt-2 text-[#4ADE80]">
+          <span className="flex items-center gap-1.5 text-xs">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#4ADE80] shrink-0"></span>
+            Comissão Total a Receber:
           </span>
+          <span className="font-mono font-black text-sm">{formatCurrency(data.comissaoTotal || 0)}</span>
         </div>
       </div>
     )
@@ -295,7 +326,7 @@ export function DailyTicketTrendChart({ data = [] }) {
               dataKey="ticketServicos"
               position="top"
               formatter={(val) => Number(val) > 0 ? `R$${Math.round(val)}` : ""}
-              style={{ fill: "#FADD00", fontSize: "12pt", fontWeight: "800", fontFamily: "monospace" }}
+              style={{ fill: "#FADD00", fontSize: "9pt", fontWeight: "800", fontFamily: "monospace" }}
             />
           </Line>
           <Line
@@ -311,7 +342,7 @@ export function DailyTicketTrendChart({ data = [] }) {
               dataKey="ticketProdutos"
               position="top"
               formatter={(val) => Number(val) > 0 ? `R$${Math.round(val)}` : ""}
-              style={{ fill: "#ffffff", fontSize: "12pt", fontWeight: "800", fontFamily: "monospace" }}
+              style={{ fill: "#ffffff", fontSize: "9pt", fontWeight: "800", fontFamily: "monospace" }}
             />
           </Line>
         </LineChart>
@@ -324,43 +355,85 @@ export function BarberPerformanceChart({ data = [] }) {
   if (!data || data.length === 0) {
     return (
       <div className="h-80 flex items-center justify-center text-xs text-muted-foreground border border-dashed border-border/60 rounded-2xl bg-muted/10">
-        Nenhum atendimento registrado por barbeiro no período
+        Nenhum atendimento ou venda registrado por barbeiro no período
       </div>
     )
-  }
-
-  const values = data.map((d) => Number(d.faturamento) || 0)
-  const maxVal = Math.max(...values, 0)
-  const minVal = Math.min(...values)
-
-  const getBarColor = (val) => {
-    const num = Number(val) || 0
-    if (num === maxVal && maxVal > 0) {
-      return "#FADD00"
-    }
-    if (num === minVal && values.length > 1 && maxVal !== minVal) {
-      return "#504D35"
-    }
-    return "#A59837"
   }
 
   return (
     <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 35, right: 10, left: -15, bottom: 0 }}>
+        <BarChart
+          data={data}
+          margin={{ top: 35, right: 15, left: -15, bottom: 0 }}
+          barGap={3}
+          barCategoryGap="20%"
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-          <XAxis dataKey="name" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} />
-          <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val) => `R$${val}`} />
+          <XAxis dataKey="name" stroke="#71717a" fontSize="10pt" tickLine={false} axisLine={false} />
+          <YAxis stroke="#71717a" fontSize="10pt" tickLine={false} axisLine={false} tickFormatter={(val) => `R$${val}`} />
           <Tooltip content={<BarberTooltip />} />
-          <Bar dataKey="faturamento" name="Faturamento" radius={[8, 8, 0, 0]}>
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={getBarColor(entry.faturamento)} />
-            ))}
+          <Legend
+            iconType="circle"
+            wrapperStyle={{ fontSize: "12pt", paddingTop: "12px" }}
+            formatter={(value) => (
+              <span className="text-muted-foreground font-semibold uppercase tracking-wider text-[12pt] mr-2">
+                {value}
+              </span>
+            )}
+          />
+          <Bar
+            dataKey="atendimentoValor"
+            name="Total em Serviços"
+            fill="#FADD00"
+            radius={[6, 6, 0, 0]}
+            minPointSize={2}
+          >
             <LabelList
-              dataKey="faturamento"
+              dataKey="atendimentoValor"
               position="top"
-              formatter={(val) => `R$${Number(val || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              style={{ fill: "#ffffff", fontSize: "18pt", fontWeight: "900", fontFamily: "monospace" }}
+              formatter={(val) =>
+                Number(val) > 0
+                  ? `R$${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                  : ""
+              }
+              style={{ fill: "#FADD00", fontSize: "9pt", fontWeight: "800", fontFamily: "monospace" }}
+            />
+          </Bar>
+          <Bar
+            dataKey="produtosValor"
+            name="Total em Produtos"
+            fill="#FFFFFF"
+            radius={[6, 6, 0, 0]}
+            minPointSize={2}
+          >
+            <LabelList
+              dataKey="produtosValor"
+              position="top"
+              formatter={(val) =>
+                Number(val) > 0
+                  ? `R$${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                  : ""
+              }
+              style={{ fill: "#FFFFFF", fontSize: "9pt", fontWeight: "800", fontFamily: "monospace" }}
+            />
+          </Bar>
+          <Bar
+            dataKey="comissaoTotal"
+            name="Comissão do Barbeiro"
+            fill="#22C55E"
+            radius={[6, 6, 0, 0]}
+            minPointSize={2}
+          >
+            <LabelList
+              dataKey="comissaoTotal"
+              position="top"
+              formatter={(val) =>
+                Number(val) > 0
+                  ? `R$${Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                  : ""
+              }
+              style={{ fill: "#4ADE80", fontSize: "9pt", fontWeight: "800", fontFamily: "monospace" }}
             />
           </Bar>
         </BarChart>
