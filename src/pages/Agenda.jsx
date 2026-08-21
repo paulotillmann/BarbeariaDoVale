@@ -171,9 +171,10 @@ export default function Agenda() {
 
     if (dayOfWeek === 0) return []
 
+    const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
     const slots = []
     let startHour = dayOfWeek === 6 ? 8 : 9
-    let endHour = dayOfWeek === 6 ? 19 : 20
+    let endHour = isStaff ? (dayOfWeek === 6 ? 21 : 23) : (dayOfWeek === 6 ? 19 : 20)
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -216,7 +217,8 @@ export default function Agenda() {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 19 : 20
+      const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
+      const closingHour = isStaff ? (dayOfWeek === 6 ? 21 : 23) : (dayOfWeek === 6 ? 19 : 20)
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }

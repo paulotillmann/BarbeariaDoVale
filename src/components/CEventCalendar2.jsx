@@ -61,19 +61,21 @@ export default function CEventCalendar2({
     return null
   }, [selectedDate])
 
-  // Gerar slots de 30 min (Sábado: 08h às 19h, Seg-Sex: 09h às 20h, Domingo: Fechado)
+  // Gerar slots de 30 min (Sábado: 08h às 21h equipe / 19h padrão, Seg-Sex: 09h às 23h equipe / 20h padrão, Domingo: Fechado)
+  const isStaff = userRole === "admin" || userRole === "barber" || userRole === "secretario"
+
   const timeSlots = useMemo(() => {
     if (dayOfWeek === null || dayOfWeek === 0) return []
     const slots = []
     const startHour = dayOfWeek === 6 ? 8 : 9
-    const endHour = dayOfWeek === 6 ? 19 : 20
+    const endHour = isStaff ? (dayOfWeek === 6 ? 21 : 23) : (dayOfWeek === 6 ? 19 : 20)
     for (let hour = startHour; hour < endHour; hour++) {
       const hStr = String(hour).padStart(2, "0")
       slots.push(`${hStr}:00`)
       slots.push(`${hStr}:30`)
     }
     return slots
-  }, [dayOfWeek])
+  }, [dayOfWeek, isStaff])
 
   // Helper para obter a data atual local no formato YYYY-MM-DD
   const getTodayStr = () => {
@@ -115,7 +117,7 @@ export default function CEventCalendar2({
   // Cálculo da posição do horário atual na grade
   const currentMinutes = now.getHours() * 60 + now.getMinutes()
   const startGridMinutes = (dayOfWeek === 6 ? 8 : 9) * 60
-  const endGridMinutes = (dayOfWeek === 6 ? 19 : 20) * 60
+  const endGridMinutes = (dayOfWeek === 6 ? (isStaff ? 21 : 19) : (isStaff ? 23 : 20)) * 60
   const isTimeInGridRange = dayOfWeek !== 0 && currentMinutes >= startGridMinutes && currentMinutes <= endGridMinutes
 
   // Posição no eixo vertical (top) em pixels para a linha do horário atual (medida precisa do DOM)
@@ -129,7 +131,7 @@ export default function CEventCalendar2({
     const d = new Date()
     const currMins = d.getHours() * 60 + d.getMinutes()
     const startMins = (dayOfWeek === 6 ? 8 : 9) * 60
-    const endMins = (dayOfWeek === 6 ? 19 : 20) * 60
+    const endMins = (dayOfWeek === 6 ? (isStaff ? 21 : 19) : (isStaff ? 23 : 20)) * 60
     const inRange = dayOfWeek !== 0 && currMins >= startMins && currMins <= endMins
 
     if (!isToday || !inRange || timeSlots.length === 0) {
@@ -185,7 +187,7 @@ export default function CEventCalendar2({
     const minInto = (currMins - startMins) % 30
     const fallbackTop = 64 + slotIndex * 56 + (minInto / 30) * 56
     setLineTopPx(fallbackTop)
-  }, [dayOfWeek, isToday, timeSlots])
+  }, [dayOfWeek, isToday, timeSlots, isStaff])
 
   // Atualizar a posição da linha do horário atual quando necessário
   useEffect(() => {

@@ -986,7 +986,8 @@ app.post('/api/appointments', authMiddleware, async (c) => {
 
         const reqDateObj = new Date(dateStr + "T00:00:00");
         const dayOfWeek = reqDateObj.getDay();
-        const closingHour = dayOfWeek === 6 ? 16 : 20;
+        const isStaff = user && (user.role === 'admin' || user.role === 'barber' || user.role === 'secretario');
+        const closingHour = dayOfWeek === 6 ? (isStaff ? 21 : 19) : (isStaff ? 23 : 20);
         if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
           return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
         }
@@ -1174,7 +1175,7 @@ app.post('/api/appointments/quick', async (c) => {
 
         const reqDateObj = new Date(dateStr + "T00:00:00");
         const dayOfWeek = reqDateObj.getDay();
-        const closingHour = dayOfWeek === 6 ? 16 : 20;
+        const closingHour = dayOfWeek === 6 ? 19 : 20;
         if (dayOfWeek !== 0 && newEndM > closingHour * 60) {
           return c.json({ error: 'O horário selecionado ultrapassa o horário de funcionamento da barbearia.' }, 400);
         }

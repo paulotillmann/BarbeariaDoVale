@@ -91,13 +91,14 @@ export default function AgendaGrid() {
 
   const getAvailableCancelTimeSlots = (dateString, isEnd = false) => {
     const slots = getTimeSlots(dateString)
+    const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
 
-    let closingTime = "20:00"
+    let closingTime = isStaff ? "23:00" : "20:00"
     if (dateString) {
       const dateParts = dateString.split("-")
       if (dateParts.length === 3) {
         const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
-        if (dateObj.getDay() === 6) closingTime = "19:00"
+        if (dateObj.getDay() === 6) closingTime = isStaff ? "21:00" : "19:00"
       }
     }
 
@@ -134,14 +135,15 @@ export default function AgendaGrid() {
     setCancelStartTime(initialStart)
 
     // Calcular o próximo slot (30 min a mais) como término padrão
+    const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
     const [h, m] = initialStart.split(":").map(Number)
     let endMin = h * 60 + m + 30
-    let maxClosingMin = 20 * 60
+    let maxClosingMin = isStaff ? 23 * 60 : 20 * 60
     if (selectedDate) {
       const dateParts = selectedDate.split("-")
       if (dateParts.length === 3) {
         const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
-        if (dateObj.getDay() === 6) maxClosingMin = 16 * 60
+        if (dateObj.getDay() === 6) maxClosingMin = isStaff ? 21 * 60 : 19 * 60
       }
     }
     if (endMin > maxClosingMin) endMin = maxClosingMin
@@ -473,9 +475,10 @@ export default function AgendaGrid() {
 
     if (dayOfWeek === 0) return []
 
+    const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
     const slots = []
     let startHour = dayOfWeek === 6 ? 8 : 9
-    let endHour = dayOfWeek === 6 ? 19 : 20
+    let endHour = isStaff ? (dayOfWeek === 6 ? 21 : 23) : (dayOfWeek === 6 ? 19 : 20)
 
     for (let h = startHour; h < endHour; h++) {
       slots.push(`${String(h).padStart(2, "0")}:00`)
@@ -535,7 +538,8 @@ export default function AgendaGrid() {
       const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
       const dayOfWeek = dateObj.getDay()
       if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 19 : 20
+      const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
+      const closingHour = isStaff ? (dayOfWeek === 6 ? 21 : 23) : (dayOfWeek === 6 ? 19 : 20)
       const closingMinutes = closingHour * 60
       if (slotEndMinutes > closingMinutes) return true
     }
@@ -944,8 +948,13 @@ export default function AgendaGrid() {
                 const d = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
                 const day = d.getDay()
                 if (day === 0) return "Barbearia fechada aos domingos."
-                if (day === 6) return "Visão em grade de horários de sábado (08h às 19h) organizados por colunas de barbeiro."
-                return "Visão em grade de horários (09h às 20h) organizados por colunas de barbeiro."
+                const isStaff = user && (user.role === "admin" || user.role === "barber" || user.role === "secretario")
+                if (day === 6) {
+                  const closingSabText = isStaff ? "21h" : "19h"
+                  return `Visão em grade de horários de sábado (08h às ${closingSabText}) organizados por colunas de barbeiro.`
+                }
+                const closingText = isStaff ? "23h" : "20h"
+                return `Visão em grade de horários (09h às ${closingText}) organizados por colunas de barbeiro.`
               })()}
             </p>
           </div>
