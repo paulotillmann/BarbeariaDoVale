@@ -287,7 +287,7 @@ export default function Home() {
                           </div>
                           <div className="mt-1.5 flex items-center gap-1.5">
                             <span className="text-xs text-muted-foreground/80 line-through font-medium">De R$ 110,00</span>
-                            <span className="text-xs font-bold text-primary bg-primary/15 px-2 py-0.5 rounded-md border border-primary/30">Por R$ 80,00</span>
+                            <span className="text-xs font-bold text-primary bg-primary/15 px-2 py-0.5 rounded-md border border-primary/30">Por R$ 90,00</span>
                           </div>
                         </div>
                       )}
@@ -307,7 +307,7 @@ export default function Home() {
                       {isComboPromo ? (
                         <div className="text-right">
                           <div className="text-xs text-muted-foreground/80 line-through font-medium -mb-0.5">De R$ 110,00</div>
-                          <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid">R$ 80,00</div>
+                          <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid">R$ 90,00</div>
                         </div>
                       ) : (
                         <div className="font-display text-xl lg:text-2xl font-bold gold-text-solid text-right">{priceFormatted}</div>
