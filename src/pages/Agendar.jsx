@@ -242,7 +242,7 @@ export default function Agendar() {
       const dateParts = dateString.split("-")
       if (dateParts.length === 3) {
         const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
-        if (dateObj.getDay() === 6) closingHour = 16
+        if (dateObj.getDay() === 6) closingHour = 19
       }
     }
     const closingMinutes = closingHour * 60
