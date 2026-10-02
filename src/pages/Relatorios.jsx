@@ -315,6 +315,13 @@ export default function Relatorios() {
       icon: <CalendarRange className="w-6 h-6" />,
       description: "Histórico completo de horários marcados, atendimentos concluídos, cancelamentos e valores por cliente e barbeiro.",
       badge: "Agenda & Atendimentos"
+    },
+    {
+      id: "servicos",
+      title: "Serviços",
+      icon: <Scissors className="w-6 h-6" />,
+      description: "Relatório detalhado de serviços realizados, com quantidade de atendimentos, faturamento total e percentuais por serviço.",
+      badge: "Serviços & Demanda"
     }
   ]
 
@@ -476,6 +483,164 @@ export default function Relatorios() {
       (p.name && p.name.toLowerCase().includes(search)) ||
       (p.category && p.category.toLowerCase().includes(search))
     )
+  }
+
+  // Consolidação e cálculo do Relatório por Serviço
+  const getServicesReportData = () => {
+    // 1. Filtrar agendamentos válidos
+    const validAppts = appointmentsData.filter((a) => {
+      // Exclui cancelados e faltas
+      const statusLower = (a.status || "").toLowerCase()
+      if (
+        statusLower === "cancelled" || 
+        statusLower === "cancelado" || 
+        statusLower === "canceled" || 
+        statusLower === "absent" || 
+        statusLower === "faltou"
+      ) {
+        return false
+      }
+
+      // Filtro de profissional
+      if (selectedBarberId !== "todos") {
+        const apptBarberId = String(a.barber_id || a.barberId || "")
+        if (apptBarberId !== String(selectedBarberId)) return false
+      }
+
+      // Filtro de data
+      const apptDateStr = (a.appointment_time || a.start_time || a.date || a.created_at || "").split("T")[0].split(" ")[0]
+      if (startDate && apptDateStr < startDate) return false
+      if (endDate && apptDateStr > endDate) return false
+
+      return true
+    })
+
+    // 2. Mapeamento e agrupamento por serviço
+    const servicesMap = {}
+    const servicesLookup = {}
+    servicesData.forEach((s) => {
+      servicesLookup[String(s.id)] = s
+    })
+
+    validAppts.forEach((a) => {
+      const apptTotalPrice = getAppointmentPrice(a)
+      
+      let serviceIds = []
+      if (Array.isArray(a.service_ids)) {
+        serviceIds = a.service_ids
+      } else if (typeof a.service_ids === "string" && a.service_ids.trim()) {
+        try {
+          const parsed = JSON.parse(a.service_ids)
+          if (Array.isArray(parsed)) serviceIds = parsed
+          else serviceIds = a.service_ids.split(",").map(id => id.trim()).filter(Boolean)
+        } catch {
+          serviceIds = a.service_ids.split(",").map(id => id.trim()).filter(Boolean)
+        }
+      } else if (a.service_id) {
+        serviceIds = [a.service_id]
+      }
+
+      if (serviceIds.length > 0) {
+        if (serviceIds.length === 1) {
+          const sId = String(serviceIds[0])
+          const sObj = servicesLookup[sId]
+          const name = sObj?.name || a.service_name || a.serviceName || "Serviço"
+          const defaultPrice = Number(sObj?.price || sObj?.valor || 0)
+          const finalVal = apptTotalPrice > 0 ? apptTotalPrice : defaultPrice
+
+          if (!servicesMap[sId]) {
+            servicesMap[sId] = {
+              id: sId,
+              name: name.toUpperCase(),
+              unitPrice: defaultPrice || finalVal,
+              count: 0,
+              totalValue: 0
+            }
+          }
+          servicesMap[sId].count += 1
+          servicesMap[sId].totalValue += finalVal
+        } else {
+          const resolvedServices = serviceIds.map(id => {
+            const sObj = servicesLookup[String(id)]
+            return {
+              id: String(id),
+              name: (sObj?.name || "Serviço").toUpperCase(),
+              price: Number(sObj?.price || sObj?.valor || 0)
+            }
+          })
+          const sumCatalogPrice = resolvedServices.reduce((acc, curr) => acc + curr.price, 0)
+
+          resolvedServices.forEach(s => {
+            let portionVal = s.price
+            if (apptTotalPrice > 0 && sumCatalogPrice > 0) {
+              portionVal = (s.price / sumCatalogPrice) * apptTotalPrice
+            } else if (apptTotalPrice > 0 && sumCatalogPrice === 0) {
+              portionVal = apptTotalPrice / resolvedServices.length
+            }
+
+            if (!servicesMap[s.id]) {
+              servicesMap[s.id] = {
+                id: s.id,
+                name: s.name,
+                unitPrice: s.price,
+                count: 0,
+                totalValue: 0
+              }
+            }
+            servicesMap[s.id].count += 1
+            servicesMap[s.id].totalValue += portionVal
+          })
+        }
+      } else {
+        const name = (a.service_name || a.serviceName || "OUTROS SERVIÇOS").toUpperCase().trim()
+        const sKey = `named-${name}`
+        const finalVal = apptTotalPrice > 0 ? apptTotalPrice : 0
+
+        if (!servicesMap[sKey]) {
+          const matched = servicesData.find(s => (s.name || "").toUpperCase().trim() === name)
+          servicesMap[sKey] = {
+            id: sKey,
+            name: name,
+            unitPrice: matched ? Number(matched.price || matched.valor || 0) : finalVal,
+            count: 0,
+            totalValue: 0
+          }
+        }
+        servicesMap[sKey].count += 1
+        servicesMap[sKey].totalValue += finalVal
+      }
+    })
+
+    let list = Object.values(servicesMap)
+
+    if (searchFilter) {
+      const search = searchFilter.toLowerCase()
+      list = list.filter(item => item.name.toLowerCase().includes(search))
+    }
+
+    const totalCount = list.reduce((acc, curr) => acc + curr.count, 0)
+    const totalValue = list.reduce((acc, curr) => acc + curr.totalValue, 0)
+
+    list = list.map(item => ({
+      ...item,
+      qtyPercent: totalCount > 0 ? (item.count / totalCount) * 100 : 0,
+      valuePercent: totalValue > 0 ? (item.totalValue / totalValue) * 100 : 0
+    }))
+
+    // Ordenação padrão por quantidade realizada decrescente
+    list.sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count
+      }
+      return b.totalValue - a.totalValue
+    })
+
+    return {
+      items: list,
+      totalCount,
+      totalValue,
+      avgTicket: totalCount > 0 ? totalValue / totalCount : 0
+    }
   }
 
   // Somatórias do relatório de comissão para a linha de totais
@@ -742,7 +907,7 @@ export default function Relatorios() {
                 </div>
               )}
 
-              {(activeReport === "agendamentos" || activeReport === "comissao_profissional" || activeReport === "faturamento" || activeReport === "fluxo_caixa") && (
+              {(activeReport === "agendamentos" || activeReport === "servicos" || activeReport === "comissao_profissional" || activeReport === "faturamento" || activeReport === "fluxo_caixa") && (
                 <>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Início:</span>
@@ -773,7 +938,7 @@ export default function Relatorios() {
                 </>
               )}
 
-              {(activeReport === "comissao_profissional" || activeReport === "agendamentos" || activeReport === "fluxo_caixa") && (
+              {(activeReport === "comissao_profissional" || activeReport === "servicos" || activeReport === "agendamentos" || activeReport === "fluxo_caixa") && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Profissional:</span>
                   <select
@@ -1294,6 +1459,96 @@ export default function Relatorios() {
                     </div>
                   </div>
                 )}
+
+                {/* 7. RELATÓRIO DE SERVIÇOS REALIZADOS (AGRUPADO POR SERVIÇO) */}
+                {activeReport === "servicos" && (() => {
+                  const servicesReport = getServicesReportData()
+                  const { items, totalCount, totalValue, avgTicket } = servicesReport
+
+                  return (
+                    <div className="space-y-4">
+                      {generatedNotice && (
+                        <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold rounded-xl p-3 shadow-xs animate-fade-in no-print">
+                          <CheckCircle2 size={16} className="shrink-0 text-green-400" />
+                          <span>Relatório de Serviços gerado com sucesso para os filtros selecionados!</span>
+                        </div>
+                      )}
+
+                      {/* Cards Resumo de Métricas */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Total de Atendimentos</span>
+                          <p className="text-xl font-bold text-primary print:text-black mt-1">
+                            {totalCount} serviços
+                          </p>
+                        </div>
+                        <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Faturamento em Serviços</span>
+                          <p className="text-xl font-bold text-emerald-400 print:text-black mt-1">
+                            {formatCurrency(totalValue)}
+                          </p>
+                        </div>
+                        <div className="bg-background/40 border border-border p-4 rounded-xl text-center print:bg-gray-100 print:border-black">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground print:text-black">Ticket Médio por Atendimento</span>
+                          <p className="text-xl font-bold text-foreground print:text-black mt-1">
+                            {formatCurrency(avgTicket)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Tabela do Relatório */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse print-table">
+                          <thead>
+                            <tr className="border-b border-border/80 bg-muted/40 text-muted-foreground font-semibold">
+                              <th className="p-3">Serviço</th>
+                              <th className="p-3 text-right">Preço Cadastrado</th>
+                              <th className="p-3 text-center">Qtd. Realizada</th>
+                              <th className="p-3 text-right">% Quantidade</th>
+                              <th className="p-3 text-right">Valor Total (R$)</th>
+                              <th className="p-3 text-right text-primary font-bold">% Faturamento</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/40">
+                            {items.length === 0 ? (
+                              <tr>
+                                <td colSpan="6" className="p-6 text-center text-muted-foreground">
+                                  Nenhum serviço realizado encontrado para os filtros selecionados.
+                                </td>
+                              </tr>
+                            ) : (
+                              items.map((item) => (
+                                <tr key={item.id} className="hover:bg-muted/20">
+                                  <td className="p-3 font-semibold text-foreground flex items-center gap-2">
+                                    <Scissors size={14} className="text-primary shrink-0 no-print" />
+                                    <span>{item.name}</span>
+                                  </td>
+                                  <td className="p-3 text-right text-muted-foreground font-medium">{formatCurrency(item.unitPrice)}</td>
+                                  <td className="p-3 text-center font-bold text-foreground">{item.count}</td>
+                                  <td className="p-3 text-right text-muted-foreground font-medium">{item.qtyPercent.toFixed(1)}%</td>
+                                  <td className="p-3 text-right font-bold text-emerald-400">{formatCurrency(item.totalValue)}</td>
+                                  <td className="p-3 text-right font-bold text-primary">{item.valuePercent.toFixed(1)}%</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                          {items.length > 0 && (
+                            <tfoot>
+                              <tr className="border-t-2 border-primary/40 bg-primary/10 font-bold text-xs">
+                                <td className="p-3 uppercase tracking-wider text-foreground font-black">Totais Gerais ({items.length} Serviços Distintos)</td>
+                                <td className="p-3 text-right text-muted-foreground">-</td>
+                                <td className="p-3 text-center text-foreground font-black text-sm">{totalCount} un.</td>
+                                <td className="p-3 text-right text-foreground font-bold">100.0%</td>
+                                <td className="p-3 text-right text-emerald-400 font-black text-sm">{formatCurrency(totalValue)}</td>
+                                <td className="p-3 text-right text-primary font-black text-sm">100.0%</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  )
+                })()}
 
               </div>
             </div>
