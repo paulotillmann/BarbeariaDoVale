@@ -145,21 +145,31 @@ export default function Agendar() {
     return slots
   }
 
-  // Verificar se um horário de um dia selecionado já passou da hora local atual
-  const isTimeSlotPast = (dateString, timeString) => {
+  // Verificar se o horário possui antecedência mínima de 15 minutos para agendamentos imediatos
+  const isTimeSlotWithinLeadTime = (dateString, timeString) => {
     if (!dateString || !timeString) return false
-    const appointmentDateTime = new Date(`${dateString}T${timeString}`)
+    const dateParts = dateString.split("-").map(Number)
+    const timeParts = timeString.split(":").map(Number)
+    if (dateParts.length < 3 || timeParts.length < 2) return false
+    const appointmentDateTime = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1], 0, 0)
     const now = new Date()
-    return appointmentDateTime < now
+    return (appointmentDateTime.getTime() - now.getTime()) < 15 * 60 * 1000
   }
 
   // Cálculo acumulado de duração para os serviços selecionados
   const selectedServicesDetails = services.filter(s => selectedServices.includes(s.id))
   const totalDurationMinutes = selectedServicesDetails.reduce((sum, s) => sum + (s.duration_minutes ?? 30), 0)
 
-  // Verificar se um horário de um barbeiro específico já está reservado/ocupado
+  // Verificar se um horário de um barbeiro específico já está reservado/ocupado ou indisponível
   const isTimeSlotBooked = (dateString, timeString, targetBarberId = selectedBarber) => {
-    if (!targetBarberId || !dateString || !timeString) return false
+    if (!dateString || !timeString) return false
+
+    // Bloquear se não respeitar a antecedência mínima de 15 minutos
+    if (isTimeSlotWithinLeadTime(dateString, timeString)) {
+      return true
+    }
+
+    if (!targetBarberId) return false
 
     const barbObj = barbers.find(b => String(b.id) === String(targetBarberId))
     const barbName = barbObj ? barbObj.name : null
@@ -225,7 +235,14 @@ export default function Agendar() {
 
   // Avaliar e retornar o motivo exato pelo qual um horário não pode ser agendado devido à duração dos serviços ou conflitos
   const getTimeSlotStatusReason = (dateString, timeString, targetBarberId = selectedBarber) => {
-    if (!targetBarberId || !dateString || !timeString) return null
+    if (!dateString || !timeString) return null
+
+    // 1. Verificar antecedência mínima de 15 minutos para agendamentos imediatos
+    if (isTimeSlotWithinLeadTime(dateString, timeString)) {
+      return "Horário indisponível para agendamento imediato."
+    }
+
+    if (!targetBarberId) return null
 
     const barbObj = barbers.find(b => String(b.id) === String(targetBarberId))
     const barbName = barbObj ? barbObj.name : null
@@ -796,20 +813,15 @@ export default function Agendar() {
 
                           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[260px] overflow-y-auto pr-2">
                             {getTimeSlots(selectedDate).map(time => {
-                              const isPast = isTimeSlotPast(selectedDate, time)
                               const reason = getTimeSlotStatusReason(selectedDate, time, selectedBarber)
                               const isBooked = !!reason
-                              const isDisabled = isPast || isBooked
+                              const isDisabled = isBooked
 
                               return (
                                 <button
                                   key={time}
                                   type="button"
                                   onClick={() => {
-                                    if (isPast) {
-                                      setSlotWarning("Este horário já encerrou para a data selecionada.")
-                                      return
-                                    }
                                     if (reason) {
                                       setSlotWarning(reason)
                                       return
@@ -817,14 +829,12 @@ export default function Agendar() {
                                     setSlotWarning("")
                                     setSelectedTime(time)
                                   }}
-                                  title={reason || (isPast ? "Horário encerrado" : "Horário disponível")}
+                                  title={reason || "Horário disponível"}
                                   className={`py-3 text-xs font-bold rounded-xl border transition-all text-center flex flex-col items-center justify-center cursor-pointer ${selectedTime === time
                                       ? "bg-primary border-primary text-primary-foreground shadow-gold scale-105"
                                       : isBooked
                                         ? "bg-destructive/10 border-destructive/40 text-destructive hover:bg-destructive/20"
-                                        : isPast
-                                          ? "bg-background/20 border-border/10 text-muted-foreground/30 cursor-not-allowed"
-                                          : "bg-background border-border text-foreground hover:border-primary/50"
+                                        : "bg-background border-border text-foreground hover:border-primary/50"
                                     }`}
                                 >
                                   <span className={isDisabled ? "line-through" : ""}>{time}</span>
