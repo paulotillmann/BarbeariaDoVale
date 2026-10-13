@@ -845,10 +845,15 @@ export default function Dashboard() {
 
     const caixaApptPriceMap = new Map()
     filteredCaixa.forEach((t) => {
-      if (t.appointment_id) caixaApptPriceMap.set(String(t.appointment_id), Number(t.amount || 0))
-      if (t.id && t.id.startsWith("cx-srv-")) {
-        const apptId = t.id.replace("cx-srv-", "")
-        caixaApptPriceMap.set(apptId, Number(t.amount || 0))
+      const isProd = t.category === "Venda de Produtos" || t.category === "Produto" || (t.id && t.id.startsWith("caixa-sale-")) || (t.category && t.category.toLowerCase().includes("produto"))
+      if (!isProd) {
+        if (t.appointment_id && !t.id?.startsWith("caixa-sale-")) {
+          caixaApptPriceMap.set(String(t.appointment_id), Number(t.amount || 0))
+        }
+        if (t.id && t.id.startsWith("cx-srv-")) {
+          const apptId = t.id.replace("cx-srv-", "")
+          caixaApptPriceMap.set(apptId, Number(t.amount || 0))
+        }
       }
     })
 

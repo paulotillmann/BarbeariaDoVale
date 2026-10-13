@@ -309,7 +309,7 @@ export default function AgendaGrid() {
       return a
     }))
     setCaixaList(prev => prev.map(c => {
-      if (c.id === updatedInfo.caixa_id || c.appointment_id === updatedInfo.appointmentId) {
+      if (c.id === updatedInfo.caixa_id || (c.appointment_id === updatedInfo.appointmentId && !c.id?.startsWith('caixa-sale-') && (c.id?.startsWith('cx-srv-') || c.category === 'Serviço'))) {
         return {
           ...c,
           amount: updatedInfo.amount,

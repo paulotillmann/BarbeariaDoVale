@@ -202,8 +202,8 @@ export default function MeuCaixa() {
 
     const enrichedList = filteredTransactions.map(t => {
       const val = Number(t.amount) || 0
-      const isServico = t.category === "Serviço" || t.id.startsWith("cx-srv-") || Boolean(t.appointment_id)
-      const isProduto = t.category === "Venda de Produtos" || t.id.startsWith("caixa-sale-") || t.category === "Produto"
+      const isProduto = t.category === "Venda de Produtos" || t.category === "Produto" || (t.id && t.id.startsWith("caixa-sale-")) || (t.category && t.category.toLowerCase().includes("produto"))
+      const isServico = !isProduto && (t.category === "Serviço" || (t.id && t.id.startsWith("cx-srv-")) || (Boolean(t.appointment_id) && !t.id?.startsWith("caixa-sale-")))
       
       let itemType = "outro"
       let commissionPct = 0
@@ -212,17 +212,17 @@ export default function MeuCaixa() {
       if (t.type === "despesa") {
         itemType = "despesa"
         despesasTotal += val
-      } else if (isServico) {
-        itemType = "servico"
-        servicosBruto += val
-        servicosQtd += 1
-        commissionPct = serviceCommissionPct
-        commissionVal = (val * commissionPct) / 100
       } else if (isProduto) {
         itemType = "produto"
         produtosBruto += val
         produtosQtd += 1
         commissionPct = productCommissionPct
+        commissionVal = (val * commissionPct) / 100
+      } else if (isServico) {
+        itemType = "servico"
+        servicosBruto += val
+        servicosQtd += 1
+        commissionPct = serviceCommissionPct
         commissionVal = (val * commissionPct) / 100
       } else {
         itemType = "receita_avulsa"
@@ -241,7 +241,16 @@ export default function MeuCaixa() {
       let displayTitle = t.description || "Lançamento"
       let displayClient = t.client_name || ""
 
-      if (isServico) {
+      if (isProduto) {
+        if (t.products_detail) {
+          displayTitle = t.products_detail
+        } else if (t.description && t.description.includes("Venda: ")) {
+          const parts = t.description.split(" - Pagamento: ")
+          displayTitle = parts[0].replace("Venda: ", "").trim()
+        } else if (t.description && t.description.includes("Venda de Produtos")) {
+          displayTitle = "Venda de Produtos"
+        }
+      } else if (isServico) {
         if (t.service_names) {
           displayTitle = t.service_names
         } else if (t.description && t.description.includes("Serviço: ")) {
@@ -250,15 +259,6 @@ export default function MeuCaixa() {
           if (!displayClient && parts[1]) {
             displayClient = parts[1].trim()
           }
-        }
-      } else if (isProduto) {
-        if (t.products_detail) {
-          displayTitle = t.products_detail
-        } else if (t.description && t.description.includes("Venda: ")) {
-          const parts = t.description.split(" - Pagamento: ")
-          displayTitle = parts[0].replace("Venda: ", "").trim()
-        } else if (t.description && t.description.includes("Venda de Produtos")) {
-          displayTitle = "Venda de Produtos"
         }
       }
 

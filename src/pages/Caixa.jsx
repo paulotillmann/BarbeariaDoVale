@@ -537,7 +537,7 @@ export default function Caixa() {
       const v = Number(t.amount) || 0
       if (t.type === "receita") {
         rec += v
-        const isProduto = t.category === "Venda de Produtos" || t.category === "Produto" || (t.id && t.id.startsWith("caixa-sale-"))
+        const isProduto = t.category === "Venda de Produtos" || t.category === "Produto" || (t.id && t.id.startsWith("caixa-sale-")) || (t.category && t.category.toLowerCase().includes("produto"))
         if (isProduto) {
           prod += v
         } else {
@@ -1130,9 +1130,14 @@ export default function Caixa() {
                         <td className="py-3.5 px-4 max-w-xs font-medium text-foreground">
                           <div className="flex items-center gap-2">
                             <span className="line-clamp-2">{t.description}</span>
-                            {t.appointment_id && (
+                            {t.id && t.id.startsWith("cx-srv-") && (
                               <span className="shrink-0 text-[9px] bg-primary/10 border border-primary/30 text-primary font-bold px-1.5 py-0.5 rounded" title="Gerado automaticamente de agendamento">
                                 <Scissors size={10} className="inline mr-1" /> Auto
+                              </span>
+                            )}
+                            {t.id && t.id.startsWith("caixa-sale-") && t.appointment_id && (
+                              <span className="shrink-0 text-[9px] bg-amber-500/10 border border-amber-500/30 text-amber-500 font-bold px-1.5 py-0.5 rounded" title="Venda vinculada a agendamento">
+                                <ShoppingBag size={10} className="inline mr-1" /> Agendamento
                               </span>
                             )}
                           </div>

@@ -2334,10 +2334,10 @@ async function syncCompletedAppointmentsToCaixa(db) {
     // Mesclar agendamentos duplicados legados antes de sincronizar
     await mergeOrphanedDuplicateAppointments(db);
 
-    // 1. Limpeza preventiva: Remover lançamentos no caixa de agendamentos cancelados, ausentes ou pendentes
+    // 1. Limpeza preventiva: Remover lançamentos automáticos de serviços no caixa de agendamentos cancelados, ausentes ou pendentes
     await db.prepare(`
       DELETE FROM caixa 
-      WHERE (appointment_id IS NOT NULL OR id LIKE 'cx-srv-%')
+      WHERE id LIKE 'cx-srv-%'
         AND (
           appointment_id IN (SELECT id FROM appointments WHERE status IN ('cancelled', 'absent', 'pending'))
           OR REPLACE(id, 'cx-srv-', '') IN (SELECT id FROM appointments WHERE status IN ('cancelled', 'absent', 'pending'))

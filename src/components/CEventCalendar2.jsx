@@ -534,7 +534,10 @@ export default function CEventCalendar2({
                       const apptEndTimeStr = `${endHStr}:${endMStr}`
                       const apptSale = sales.find(s => String(s.appointment_id) === String(appt.id))
 
-                      const matchedCaixa = caixaTransactions.find(c => c.appointment_id === appt.id || c.id === 'cx-srv-' + appt.id)
+                      const matchedCaixa = caixaTransactions.find(c => 
+                        c.id === 'cx-srv-' + appt.id || 
+                        (c.appointment_id === appt.id && !c.id?.startsWith('caixa-sale-') && (c.id?.startsWith('cx-srv-') || c.category === 'Serviço'))
+                      )
                       const hasCaixa = Boolean(appt.caixa_id || matchedCaixa)
                       const currentPaymentMethod = appt.caixa_payment_method || (matchedCaixa ? matchedCaixa.payment_method : null)
                       const currentCaixaAmount = appt.caixa_amount !== undefined && appt.caixa_amount !== null

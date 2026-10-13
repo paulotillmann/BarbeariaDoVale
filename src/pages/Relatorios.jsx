@@ -111,8 +111,11 @@ export default function Relatorios() {
     const directPrice = Number(a.price || a.total_price || a.value || a.amount || 0)
     if (directPrice > 0) return directPrice
 
-    // 2. Busca no lançamento sincronizado do Caixa
-    const matchedTx = cashFlowData.find(t => t.appointment_id === a.id || t.id === `cx-srv-${a.id}`)
+    // 2. Busca no lançamento sincronizado de serviço do Caixa
+    const matchedTx = cashFlowData.find(t => 
+      t.id === `cx-srv-${a.id}` || 
+      (t.appointment_id === a.id && !t.id?.startsWith("caixa-sale-") && (t.id?.startsWith("cx-srv-") || t.category === "Serviço"))
+    )
     if (matchedTx && Number(matchedTx.amount || matchedTx.valor) > 0) {
       return Number(matchedTx.amount || matchedTx.valor)
     }
