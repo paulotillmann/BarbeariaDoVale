@@ -2891,6 +2891,82 @@ app.delete('/api/sales/:id', authMiddleware, async (c) => {
   }
 });
 
+// ==========================================
+// CONFIGURAÇÕES GERAIS DO SISTEMA
+// ==========================================
+
+// Obter configurações gerais (público)
+app.get('/api/settings', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare("SELECT key, value FROM settings").all();
+    const defaultSettings = {
+      min_lead_time_minutes: "30",
+      shop_name: "Barbearia Do Vale",
+      shop_address: "Av. Senador Melo Viana, 709 - Goiás, Araguari/MG",
+      shop_phone: "(34) 99868-4036",
+      shop_open_hours: "Seg - Sex: 09:00 - 20:00 | Sábado: 08:00 - 19:00",
+      inactivity_minutes: "5"
+    };
+
+    if (results && results.length > 0) {
+      for (const row of results) {
+        defaultSettings[row.key] = row.value;
+      }
+    }
+
+    return c.json(defaultSettings);
+  } catch (e) {
+    return c.json({
+      min_lead_time_minutes: "30",
+      shop_name: "Barbearia Do Vale",
+      shop_address: "Av. Senador Melo Viana, 709 - Goiás, Araguari/MG",
+      shop_phone: "(34) 99868-4036",
+      shop_open_hours: "Seg - Sex: 09:00 - 20:00 | Sábado: 08:00 - 19:00",
+      inactivity_minutes: "5"
+    });
+  }
+});
+
+// Atualizar configurações gerais (Admin)
+app.put('/api/settings', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') {
+    return c.json({ error: 'Acesso negado. Apenas administradores podem alterar configurações gerais.' }, 403);
+  }
+
+  try {
+    const body = await c.req.json();
+    const validKeys = [
+      'min_lead_time_minutes',
+      'shop_name',
+      'shop_address',
+      'shop_phone',
+      'shop_open_hours',
+      'inactivity_minutes'
+    ];
+
+    for (const key of validKeys) {
+      if (body[key] !== undefined && body[key] !== null) {
+        await c.env.DB.prepare(
+          "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
+        ).bind(key, String(body[key])).run();
+      }
+    }
+
+    const { results } = await c.env.DB.prepare("SELECT key, value FROM settings").all();
+    const updated = {};
+    if (results) {
+      for (const row of results) {
+        updated[row.key] = row.value;
+      }
+    }
+
+    return c.json({ success: true, settings: updated });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 export default app;
 
 

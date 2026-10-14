@@ -35,6 +35,26 @@ export default function Agendar() {
   const [error, setError] = useState("")
   const [slotWarning, setSlotWarning] = useState("")
   const [successMsg, setSuccessMsg] = useState("")
+  const [minLeadTimeMinutes, setMinLeadTimeMinutes] = useState(() => {
+    const cached = localStorage.getItem("minLeadTimeMinutes")
+    return cached !== null && !isNaN(Number(cached)) ? Number(cached) : 30
+  })
+
+  // Sincronizar parâmetro de antecedência se atualizado no localStorage ou evento
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      const cached = localStorage.getItem("minLeadTimeMinutes")
+      if (cached !== null && !isNaN(Number(cached))) {
+        setMinLeadTimeMinutes(Number(cached))
+      }
+    }
+    window.addEventListener("storage", handleStorageUpdate)
+    window.addEventListener("storage_settings_updated", handleStorageUpdate)
+    return () => {
+      window.removeEventListener("storage", handleStorageUpdate)
+      window.removeEventListener("storage_settings_updated", handleStorageUpdate)
+    }
+  }, [])
 
   // Inicializar nome e telefone com dados do usuário logado se houver
   useEffect(() => {
@@ -87,6 +107,23 @@ export default function Agendar() {
           }
         } catch (e) {
           console.error("Erro ao carregar agendamentos ocupados:", e)
+        }
+
+        // 4. Carregar Parâmetros Gerais (ex: Antecedência Mínima)
+        try {
+          const cfgRes = await fetch(`${API_URL}/api/settings`)
+          if (cfgRes.ok) {
+            const cfgData = await cfgRes.json()
+            if (cfgData && cfgData.min_lead_time_minutes !== undefined) {
+              const minutes = Number(cfgData.min_lead_time_minutes)
+              if (!isNaN(minutes)) {
+                setMinLeadTimeMinutes(minutes)
+                localStorage.setItem("minLeadTimeMinutes", String(minutes))
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Erro ao carregar configurações gerais:", e)
         }
       } catch (err) {
         console.error("Erro ao carregar dados:", err)
@@ -145,7 +182,7 @@ export default function Agendar() {
     return slots
   }
 
-  // Verificar se o horário possui antecedência mínima de 15 minutos para agendamentos imediatos
+  // Verificar se o horário possui antecedência mínima para agendamentos imediatos
   const isTimeSlotWithinLeadTime = (dateString, timeString) => {
     if (!dateString || !timeString) return false
     const dateParts = dateString.split("-").map(Number)
@@ -153,93 +190,25 @@ export default function Agendar() {
     if (dateParts.length < 3 || timeParts.length < 2) return false
     const appointmentDateTime = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1], 0, 0)
     const now = new Date()
-    return (appointmentDateTime.getTime() - now.getTime()) < 15 * 60 * 1000
+    const leadTime = (typeof minLeadTimeMinutes === "number" && !isNaN(minLeadTimeMinutes)) ? minLeadTimeMinutes : 30
+    return (appointmentDateTime.getTime() - now.getTime()) < leadTime * 60 * 1000
   }
 
   // Cálculo acumulado de duração para os serviços selecionados
   const selectedServicesDetails = services.filter(s => selectedServices.includes(s.id))
   const totalDurationMinutes = selectedServicesDetails.reduce((sum, s) => sum + (s.duration_minutes ?? 30), 0)
 
-  // Verificar se um horário de um barbeiro específico já está reservado/ocupado ou indisponível
-  const isTimeSlotBooked = (dateString, timeString, targetBarberId = selectedBarber) => {
-    if (!dateString || !timeString) return false
-
-    // Bloquear se não respeitar a antecedência mínima de 15 minutos
-    if (isTimeSlotWithinLeadTime(dateString, timeString)) {
-      return true
-    }
-
-    if (!targetBarberId) return false
-
-    const barbObj = barbers.find(b => String(b.id) === String(targetBarberId))
-    const barbName = barbObj ? barbObj.name : null
-
-    const [slotH, slotM] = timeString.split(':').map(Number)
-    if (isNaN(slotH) || isNaN(slotM)) return false
-
-    // Se o serviço selecionado no formulário tem duração 0 min (Livre), ele NÃO ocupa horário
-    if (selectedServices.length > 0 && totalDurationMinutes === 0) return false
-
-    const slotStartMinutes = slotH * 60 + slotM
-    const requestedDuration = selectedServices.length > 0 ? totalDurationMinutes : 30
-    const slotEndMinutes = slotStartMinutes + requestedDuration
-
-    // Verificar se ultrapassa o horário de funcionamento da barbearia
-    const dateParts = dateString.split("-")
-    if (dateParts.length === 3) {
-      const dateObj = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]))
-      const dayOfWeek = dateObj.getDay()
-      if (dayOfWeek === 0) return true // Domingo fechado
-      const closingHour = dayOfWeek === 6 ? 19 : 20
-      const closingMinutes = closingHour * 60
-      if (slotEndMinutes > closingMinutes) return true
-    }
-
-    return appointments.some(appt => {
-      // Ignorar agendamentos cancelados comuns, mas CONSIDERAR bloqueios de agenda (que possuem cancellation_reason)
-      if (appt.status === 'cancelled' && !appt.cancellation_reason) return false
-
-      // Verificar se é no mesmo dia
-      if (!appt.appointment_time || !appt.appointment_time.startsWith(dateString)) return false
-
-      // Verificar se é do mesmo barbeiro
-      const matchesBarberId = appt.barber_id && (
-        String(appt.barber_id) === String(targetBarberId) ||
-        (barbObj?.user_id && String(appt.barber_id) === String(barbObj.user_id)) ||
-        (barbObj?.id && String(appt.barber_id) === String(barbObj.id))
-      )
-      const matchesBarberName = barbName && appt.barber_name && appt.barber_name.trim().toLowerCase() === barbName.trim().toLowerCase()
-      if (!matchesBarberId && !matchesBarberName) return false
-
-      // Extrair horário do agendamento existente
-      const timePart = appt.appointment_time.split('T')[1] || ""
-      if (!timePart) return false
-
-      const [apptH, apptM] = timePart.split(':').map(Number)
-      if (isNaN(apptH) || isNaN(apptM)) return false
-
-      const apptStartMinutes = apptH * 60 + apptM
-      const apptDuration = appt.duration_minutes !== undefined && appt.duration_minutes !== null ? appt.duration_minutes : 30
-
-      if (apptDuration === 0) return false
-
-      const apptEndMinutes = apptStartMinutes + apptDuration
-
-      // Verifica sobreposição entre intervalos [slotStart, slotEnd) e [apptStart, apptEnd)
-      const overlapStart = Math.max(slotStartMinutes, apptStartMinutes)
-      const overlapEnd = Math.min(slotEndMinutes, apptEndMinutes)
-
-      return overlapStart < overlapEnd
-    })
-  }
-
   // Avaliar e retornar o motivo exato pelo qual um horário não pode ser agendado devido à duração dos serviços ou conflitos
   const getTimeSlotStatusReason = (dateString, timeString, targetBarberId = selectedBarber) => {
     if (!dateString || !timeString) return null
 
-    // 1. Verificar antecedência mínima de 15 minutos para agendamentos imediatos
+    // 1. Verificar antecedência mínima configurada para agendamentos imediatos
     if (isTimeSlotWithinLeadTime(dateString, timeString)) {
-      return "Horário indisponível para agendamento imediato."
+      const leadTime = (typeof minLeadTimeMinutes === "number" && !isNaN(minLeadTimeMinutes)) ? minLeadTimeMinutes : 30
+      if (leadTime > 0) {
+        return `Horário indisponível: agendamentos online requerem antecedência mínima de ${leadTime} minutos.`
+      }
+      return "Horário indisponível: este horário já passou."
     }
 
     if (!targetBarberId) return null
@@ -461,8 +430,9 @@ export default function Agendar() {
       return
     }
 
-    if (isTimeSlotBooked(selectedDate, selectedTime, selectedBarber)) {
-      setError("O horário selecionado já está reservado para este barbeiro. Por favor, selecione outro horário.")
+    const slotReason = getTimeSlotStatusReason(selectedDate, selectedTime, selectedBarber)
+    if (slotReason) {
+      setError(slotReason)
       setBookingStep(3)
       return
     }

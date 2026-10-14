@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 const AuthContext = createContext(null)
 
-export const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8787" : "https://barbeariadovale.paulo-tech-nocode.workers.dev")
+export const API_URL = import.meta.env.VITE_API_URL || "https://barbeariadovale.paulo-tech-nocode.workers.dev"
 
 const getInactivityTimeoutMs = () => {
   const saved = Number(localStorage.getItem("inactivityMinutes"))

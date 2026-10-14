@@ -43,6 +43,7 @@ export default function Configuracoes() {
   const [shopPhone, setShopPhone] = useState(() => localStorage.getItem("shopPhone") || "(34) 99868-4036")
   const [shopOpenHours, setShopOpenHours] = useState(() => localStorage.getItem("shopOpenHours") || "Seg - Sex: 09:00 - 20:00 | Sábado: 08:00 - 19:00")
   const [inactivityMinutes, setInactivityMinutes] = useState(() => localStorage.getItem("inactivityMinutes") || "5")
+  const [minLeadTimeMinutes, setMinLeadTimeMinutes] = useState(() => localStorage.getItem("minLeadTimeMinutes") || "30")
   const [settingsSuccess, setSettingsSuccess] = useState("")
 
   useEffect(() => {
@@ -54,6 +55,43 @@ export default function Configuracoes() {
     if (user.role !== "admin") {
       navigate("/dashboard")
       return
+    }
+
+    async function loadSettings() {
+      try {
+        const response = await fetch(`${API_URL}/api/settings`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data) {
+            if (data.min_lead_time_minutes !== undefined) {
+              setMinLeadTimeMinutes(String(data.min_lead_time_minutes))
+              localStorage.setItem("minLeadTimeMinutes", String(data.min_lead_time_minutes))
+            }
+            if (data.shop_name) {
+              setShopName(data.shop_name)
+              localStorage.setItem("shopName", data.shop_name)
+            }
+            if (data.shop_address) {
+              setShopAddress(data.shop_address)
+              localStorage.setItem("shopAddress", data.shop_address)
+            }
+            if (data.shop_phone) {
+              setShopPhone(data.shop_phone)
+              localStorage.setItem("shopPhone", data.shop_phone)
+            }
+            if (data.shop_open_hours) {
+              setShopOpenHours(data.shop_open_hours)
+              localStorage.setItem("shopOpenHours", data.shop_open_hours)
+            }
+            if (data.inactivity_minutes) {
+              setInactivityMinutes(String(data.inactivity_minutes))
+              localStorage.setItem("inactivityMinutes", String(data.inactivity_minutes))
+            }
+          }
+        }
+      } catch {
+        // silenciosamente usa valores do localStorage
+      }
     }
 
     async function loadUsers() {
@@ -77,6 +115,7 @@ export default function Configuracoes() {
       }
     }
 
+    loadSettings()
     loadUsers()
     loadWhatsappLogs("", "")
   }, [user, token, navigate])
@@ -278,7 +317,7 @@ export default function Configuracoes() {
     }
   }
 
-  const handleSaveSettings = (e) => {
+  const handleSaveSettings = async (e) => {
     e.preventDefault()
     setSettingsSuccess("")
     
@@ -287,8 +326,30 @@ export default function Configuracoes() {
     localStorage.setItem("shopPhone", shopPhone)
     localStorage.setItem("shopOpenHours", shopOpenHours)
     localStorage.setItem("inactivityMinutes", inactivityMinutes || "5")
+    localStorage.setItem("minLeadTimeMinutes", minLeadTimeMinutes || "30")
 
     window.dispatchEvent(new Event("storage_inactivity_updated"))
+    window.dispatchEvent(new Event("storage_settings_updated"))
+
+    try {
+      await fetch(`${API_URL}/api/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          shop_name: shopName,
+          shop_address: shopAddress,
+          shop_phone: shopPhone,
+          shop_open_hours: shopOpenHours,
+          inactivity_minutes: inactivityMinutes || "5",
+          min_lead_time_minutes: minLeadTimeMinutes || "30"
+        })
+      })
+    } catch {
+      // offline/error handling silencioso
+    }
     
     setSettingsSuccess("Configurações gerais salvas com sucesso!")
     setTimeout(() => {
@@ -493,7 +554,29 @@ export default function Configuracoes() {
                       className="w-full bg-background border border-border focus:border-primary rounded-xl py-2.5 px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      Tempo sem interação do usuário para encerramento automático da sessão.
+                       Tempo sem interação do usuário para encerramento automático da sessão.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Clock size={12} className="text-primary" /> Antecedência Mínima de Agendamento (Minutos)
+                      </span>
+                      <span className="text-[9px] text-primary/80 font-normal">Padrão: 30 min</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1440"
+                      required
+                      value={minLeadTimeMinutes}
+                      onChange={(e) => setMinLeadTimeMinutes(e.target.value)}
+                      placeholder="Ex: 30"
+                      className="w-full bg-background border border-border focus:border-primary rounded-xl py-2.5 px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Trava agendamentos online imediatos com antecedência menor que este valor.
                     </p>
                   </div>
 

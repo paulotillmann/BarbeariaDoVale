@@ -112,7 +112,11 @@ export default function Login() {
         }
       }
     } catch (err) {
-      setError(err.message || "Ocorreu um erro. Tente novamente.")
+      if (err.message === "Failed to fetch" || err.name === "TypeError") {
+        setError("Não foi possível conectar ao servidor. Verifique a conexão com a internet ou se o backend está acessível.")
+      } else {
+        setError(err.message || "Ocorreu um erro. Tente novamente.")
+      }
     } finally {
       setLoading(false)
     }
