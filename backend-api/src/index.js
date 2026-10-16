@@ -764,6 +764,9 @@ app.get('/api/appointments', authMiddleware, async (c) => {
         "INSERT OR IGNORE INTO customers (id, name, phone) VALUES ('cust-bloqueio-sistema', 'BLOQUEIO DE AGENDA', '00000000000')"
       ).run();
       await c.env.DB.prepare(
+        "UPDATE customers SET name = 'BLOQUEIO DE AGENDA', phone = '00000000000' WHERE id = 'cust-bloqueio-sistema'"
+      ).run();
+      await c.env.DB.prepare(
         "UPDATE appointments SET client_id = 'cust-bloqueio-sistema' WHERE status = 'cancelled' AND cancellation_reason IS NOT NULL AND (client_id IS NULL OR client_id != 'cust-bloqueio-sistema')"
       ).run();
     } catch {}
@@ -934,17 +937,17 @@ app.post('/api/appointments', authMiddleware, async (c) => {
 
     if (cleanPhone) {
       existingCust = await c.env.DB.prepare(
-        "SELECT id, name FROM customers WHERE phone IS NOT NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ?"
+        "SELECT id, name FROM customers WHERE id != 'cust-bloqueio-sistema' AND phone IS NOT NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ?"
       ).bind(cleanPhone).first();
     }
 
     if (!existingCust && name) {
       existingCust = await c.env.DB.prepare(
-        "SELECT id, name FROM customers WHERE LOWER(name) = LOWER(?)"
+        "SELECT id, name FROM customers WHERE id != 'cust-bloqueio-sistema' AND LOWER(name) = LOWER(?)"
       ).bind(name.trim()).first();
     }
 
-    if (existingCust) {
+    if (existingCust && existingCust.id !== 'cust-bloqueio-sistema') {
       clientId = existingCust.id;
       if (name || phone) {
         await c.env.DB.prepare(
@@ -1138,10 +1141,10 @@ app.post('/api/appointments/quick', async (c) => {
     let clientId;
     const cleanPhone = phone.replace(/\D/g, "");
     const existingCust = await c.env.DB.prepare(
-      "SELECT id FROM customers WHERE phone IS NOT NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ?"
+      "SELECT id FROM customers WHERE id != 'cust-bloqueio-sistema' AND phone IS NOT NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ?"
     ).bind(cleanPhone).first();
 
-    if (existingCust) {
+    if (existingCust && existingCust.id !== 'cust-bloqueio-sistema') {
       clientId = existingCust.id;
       await c.env.DB.prepare("UPDATE customers SET name = ?, phone = ? WHERE id = ?").bind(name.trim().toUpperCase(), phone, clientId).run();
     } else {
@@ -1489,8 +1492,28 @@ app.put('/api/appointments/:id', authMiddleware, async (c) => {
     }
 
     if (name || phone) {
-      await c.env.DB.prepare("UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?")
-        .bind(name ? name.trim().toUpperCase() : null, phone || null, existing.client_id).run();
+      if (existing.client_id && existing.client_id !== 'cust-bloqueio-sistema') {
+        await c.env.DB.prepare("UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?")
+          .bind(name ? name.trim().toUpperCase() : null, phone || null, existing.client_id).run();
+      } else if (name) {
+        let realCust = null;
+        const cleanPhone = phone ? phone.replace(/\D/g, "") : "";
+        if (cleanPhone) {
+          realCust = await c.env.DB.prepare(
+            "SELECT id FROM customers WHERE id != 'cust-bloqueio-sistema' AND phone IS NOT NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '(', ''), ')', ''), '-', '') = ?"
+          ).bind(cleanPhone).first();
+        }
+        if (!realCust && name) {
+          realCust = await c.env.DB.prepare(
+            "SELECT id FROM customers WHERE id != 'cust-bloqueio-sistema' AND LOWER(name) = LOWER(?)"
+          ).bind(name.trim()).first();
+        }
+        const newClientId = realCust ? realCust.id : crypto.randomUUID();
+        if (!realCust) {
+          await c.env.DB.prepare("INSERT INTO customers (id, name, phone) VALUES (?, ?, ?)").bind(newClientId, name.trim().toUpperCase(), phone || null).run();
+        }
+        await c.env.DB.prepare("UPDATE appointments SET client_id = ? WHERE id = ?").bind(newClientId, appointmentId).run();
+      }
     }
 
     const targetTime = appointment_time || existing.appointment_time;
@@ -1539,16 +1562,43 @@ app.delete('/api/appointments/:id', authMiddleware, async (c) => {
     // Excluir lançamentos do caixa e vendas associadas
     await deleteAppointmentCaixaAndSales(c.env.DB, appointmentId);
 
+    // Cancelar lembrete no Durable Object se houver
+    try {
+      const doId = c.env.APPOINTMENT_SCHEDULER.idFromName(appointmentId);
+      const stub = c.env.APPOINTMENT_SCHEDULER.get(doId);
+      await stub.cancelReminder();
+    } catch (e) {
+      console.warn("Erro ao cancelar reminder no DO:", e);
+    }
+
     if (existing.status === 'cancelled' && existing.cancellation_reason) {
       const dateStr = existing.appointment_time.split('T')[0];
-      await c.env.DB.prepare(`
-        DELETE FROM appointments 
+      
+      const { results: blockAppts } = await c.env.DB.prepare(`
+        SELECT id FROM appointments 
         WHERE barber_id = ? 
           AND status = 'cancelled' 
           AND cancellation_reason = ? 
           AND appointment_time LIKE ?
-      `).bind(existing.barber_id, existing.cancellation_reason, `${dateStr}%`).run();
+      `).bind(existing.barber_id, existing.cancellation_reason, `${dateStr}%`).all();
+
+      if (blockAppts && blockAppts.length > 0) {
+        for (const item of blockAppts) {
+          await c.env.DB.prepare("DELETE FROM whatsapp_logs WHERE appointment_id = ?").bind(item.id).run();
+          await c.env.DB.prepare("DELETE FROM appointment_services WHERE appointment_id = ?").bind(item.id).run();
+          await deleteAppointmentCaixaAndSales(c.env.DB, item.id);
+        }
+
+        await c.env.DB.prepare(`
+          DELETE FROM appointments 
+          WHERE barber_id = ? 
+            AND status = 'cancelled' 
+            AND cancellation_reason = ? 
+            AND appointment_time LIKE ?
+        `).bind(existing.barber_id, existing.cancellation_reason, `${dateStr}%`).run();
+      }
     } else {
+      await c.env.DB.prepare("DELETE FROM whatsapp_logs WHERE appointment_id = ?").bind(appointmentId).run();
       await c.env.DB.prepare("DELETE FROM appointment_services WHERE appointment_id = ?").bind(appointmentId).run();
       await c.env.DB.prepare("DELETE FROM appointments WHERE id = ?").bind(appointmentId).run();
     }
@@ -1710,11 +1760,11 @@ app.get('/api/customers', authMiddleware, async (c) => {
     if (queryParam) {
       const search = `%${queryParam}%`;
       results = (await c.env.DB.prepare(
-        "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers WHERE name LIKE ? OR phone LIKE ? ORDER BY name ASC"
+        "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers WHERE id != 'cust-bloqueio-sistema' AND (name LIKE ? OR phone LIKE ?) ORDER BY name ASC"
       ).bind(search, search).all()).results;
     } else {
       results = (await c.env.DB.prepare(
-        "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers ORDER BY name ASC"
+        "SELECT id, name, address, phone, birth_date, photo, created_at FROM customers WHERE id != 'cust-bloqueio-sistema' ORDER BY name ASC"
       ).all()).results;
     }
     return c.json(results);
@@ -1782,6 +1832,9 @@ app.put('/api/customers/:id', authMiddleware, async (c) => {
   }
 
   const id = c.req.param('id');
+  if (id === 'cust-bloqueio-sistema') {
+    return c.json({ error: 'Não é permitido alterar o registro de sistema.' }, 400);
+  }
   const { name, address, phone, birth_date, photo } = await c.req.json();
   if (!name || !phone) {
     return c.json({ error: 'Os campos nome e celular são obrigatórios.' }, 400);
@@ -1817,6 +1870,9 @@ app.delete('/api/customers/:id', authMiddleware, async (c) => {
   }
 
   const id = c.req.param('id');
+  if (id === 'cust-bloqueio-sistema') {
+    return c.json({ error: 'Não é permitido excluir o registro de sistema.' }, 400);
+  }
   try {
     const existing = await c.env.DB.prepare("SELECT id FROM customers WHERE id = ?").bind(id).first();
     if (!existing) {
@@ -2305,6 +2361,7 @@ async function mergeOrphanedDuplicateAppointments(db) {
         await db.prepare("DELETE FROM caixa WHERE appointment_id = ? AND id LIKE 'cx-srv-%'").bind(keepId).run();
 
         // Remover registros do duplicado e o agendamento em si
+        await db.prepare("DELETE FROM whatsapp_logs WHERE appointment_id = ?").bind(mergeId).run();
         await db.prepare("DELETE FROM appointment_services WHERE appointment_id = ?").bind(mergeId).run();
         await db.prepare("DELETE FROM appointments WHERE id = ?").bind(mergeId).run();
       }

@@ -618,8 +618,8 @@ export default function AgendaGrid() {
     const relatedSlots = appointments.filter(a => {
       if (!a.appointment_time || a.status !== "cancelled") return false
       const aDate = a.appointment_time.split("T")[0]
-      const aReason = a.cancellation_reason || ""
-      return aDate === datePart && String(a.barber_id) === String(barbId) && (aReason === reason || a.client_id === "cust-bloqueio-sistema")
+      const aReason = a.cancellation_reason || "Bloqueio de Agenda"
+      return aDate === datePart && String(a.barber_id) === String(barbId) && aReason === reason
     })
 
     if (relatedSlots.length === 0) {
@@ -677,7 +677,9 @@ export default function AgendaGrid() {
   }
 
   const handleSelectAppointment = (appt) => {
-    if (appt && (appt.cancellation_reason || appt.client_id === "cust-bloqueio-sistema" || appt.client_name === "Bloqueio de Agenda")) {
+    // Apenas registros com status 'cancelled' que possuam motivo de bloqueio abrem o modal de Bloqueio de Agenda.
+    // Qualquer agendamento ativo (confirmed, completed, etc.) abre a edição padrão do agendamento.
+    if (appt && appt.status === "cancelled" && (appt.cancellation_reason || appt.client_id === "cust-bloqueio-sistema" || appt.client_name === "Bloqueio de Agenda")) {
       setSelectedBloqueio(appt)
       setError("")
       setSuccessMsg("")
